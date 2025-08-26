@@ -22,31 +22,25 @@ const Hero = () => {
       {/* Content */}
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 animate-fade-in-up">
         <h1 className="text-5xl md:text-7xl font-bold mb-6">
-          <span className="gradient-text">Urban</span>
+          <span className="gradient-text">Step</span>
           <br />
-          <span className="text-foreground">Style</span>
+          <span className="text-foreground">Up</span>
         </h1>
         
         <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto">
-          Descubre la última moda juvenil con estilo urbano y diseños únicos que definen tu personalidad
+          Eleva tu estilo con la moda juvenil más trendy. Descubre looks únicos que definen tu personalidad
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-          <Button 
-            variant="hero" 
-            size="lg" 
-            className="px-8 py-4 text-lg font-semibold"
-          >
-            Explorar Colección
-          </Button>
-          
-          <Button 
-            variant="glass" 
-            size="lg" 
-            className="px-8 py-4 text-lg font-semibold"
-          >
-            Ver Ofertas
-          </Button>
+          <a href="/productos">
+            <Button 
+              variant="hero" 
+              size="lg" 
+              className="px-8 py-4 text-lg font-semibold"
+            >
+              Explorar Colección
+            </Button>
+          </a>
         </div>
 
         {/* Stats */}

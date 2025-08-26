@@ -17,22 +17,22 @@ const Navbar = ({ cartItems, onCartClick }: NavbarProps) => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex-shrink-0">
-            <h1 className="text-2xl font-bold gradient-text">Urban Style</h1>
+            <h1 className="text-2xl font-bold gradient-text">Step Up</h1>
           </div>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
-            <a href="#" className="text-foreground hover:text-primary transition-colors">
+            <a href="/" className="text-foreground hover:text-primary transition-colors">
               Inicio
             </a>
-            <a href="#" className="text-foreground hover:text-primary transition-colors">
+            <a href="/productos" className="text-foreground hover:text-primary transition-colors">
               Productos
             </a>
             <a href="#" className="text-foreground hover:text-primary transition-colors">
               Categorías
             </a>
             <a href="#" className="text-foreground hover:text-primary transition-colors">
-              Ofertas
+              Contacto
             </a>
           </div>
 
@@ -91,13 +91,13 @@ const Navbar = ({ cartItems, onCartClick }: NavbarProps) => {
           <div className="md:hidden border-t border-white/20">
             <div className="px-2 pt-2 pb-3 space-y-1">
               <a
-                href="#"
+                href="/"
                 className="block px-3 py-2 text-foreground hover:text-primary transition-colors"
               >
                 Inicio
               </a>
               <a
-                href="#"
+                href="/productos"
                 className="block px-3 py-2 text-foreground hover:text-primary transition-colors"
               >
                 Productos
@@ -112,7 +112,7 @@ const Navbar = ({ cartItems, onCartClick }: NavbarProps) => {
                 href="#"
                 className="block px-3 py-2 text-foreground hover:text-primary transition-colors"
               >
-                Ofertas
+                Contacto
               </a>
               <div className="px-3 py-2">
                 <div className="relative">

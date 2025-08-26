@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
-import ProductGrid from "@/components/ProductGrid";
 import Cart from "@/components/Cart";
 
 interface CartItem {
@@ -18,30 +17,6 @@ const Index = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const { toast } = useToast();
-
-  const handleAddToCart = (product: any) => {
-    setCartItems(prev => {
-      const existingItem = prev.find(item => item.id === product.id);
-      
-      if (existingItem) {
-        toast({
-          title: "Producto actualizado",
-          description: `Se aumentó la cantidad de ${product.name}`,
-        });
-        return prev.map(item =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        );
-      } else {
-        toast({
-          title: "Producto agregado",
-          description: `${product.name} se agregó al carrito`,
-        });
-        return [...prev, { ...product, quantity: 1 }];
-      }
-    });
-  };
 
   const handleUpdateQuantity = (id: number, quantity: number) => {
     if (quantity <= 0) {
@@ -75,7 +50,6 @@ const Index = () => {
       
       <main className="pt-16">
         <Hero />
-        <ProductGrid onAddToCart={handleAddToCart} />
       </main>
 
       <Cart
