@@ -56,8 +56,8 @@ export default {
 					foreground: 'hsl(var(--card-foreground))'
 				},
 				brand: {
-					turquoise: 'hsl(var(--brand-turquoise))',
-					coral: 'hsl(var(--brand-coral))',
+					orange: 'hsl(var(--brand-orange))',
+					red: 'hsl(var(--brand-red))',
 					dark: 'hsl(var(--brand-dark))',
 					light: 'hsl(var(--brand-light))'
 				},
@@ -76,10 +76,11 @@ export default {
 				'gradient-primary': 'var(--gradient-primary)',
 				'gradient-hero': 'var(--gradient-hero)',
 				'gradient-card': 'var(--gradient-card)',
+				'gradient-stepup': 'var(--gradient-stepup)',
 			},
 			boxShadow: {
 				'glow': 'var(--shadow-glow)',
-				'coral': 'var(--shadow-coral)',
+				'red': 'var(--shadow-red)',
 				'floating': 'var(--shadow-floating)',
 			},
 			backdropBlur: {

@@ -4,6 +4,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
+import ProductDetailModal from "@/components/ProductDetailModal";
+import ContactModal from "@/components/ContactModal";
+import AccessibilityMenu from "@/components/AccessibilityMenu";
+import StepUpLogo from "@/components/StepUpLogo";
+
 import Cart from "@/components/Cart";
 import ProductCard from "@/components/ProductCard";
 import { ArrowRight } from "lucide-react";
@@ -23,22 +28,28 @@ interface CartItem {
 const featuredProducts = [
   {
     id: 1,
-    name: "Camiseta Urban Turquoise",
+    name: "Camiseta Urban Orange",
     price: 25000,
     originalPrice: 35000,
     image: product1,
     category: "Camisetas",
     rating: 4.8,
     isNew: true,
+    description: "Camiseta de algodón premium con diseño urbano. Perfecta para un look casual y moderno.",
+    sizes: ["XS", "S", "M", "L", "XL"],
+    colors: ["Naranja", "Negro", "Blanco"],
   },
   {
     id: 2,
-    name: "Hoodie Coral Vibes",
+    name: "Hoodie Fire Edition",
     price: 75000,
     image: product2,
     category: "Hoodies",
     rating: 4.9,
     isNew: true,
+    description: "Hoodie con capucha de alta calidad. Comodidad y estilo en una sola prenda.",
+    sizes: ["S", "M", "L", "XL", "XXL"],
+    colors: ["Rojo", "Negro", "Gris"],
   },
   {
     id: 3,
@@ -48,6 +59,9 @@ const featuredProducts = [
     image: product3,
     category: "Pantalones",
     rating: 4.7,
+    description: "Jeans de corte clásico con acabado premium. Durabilidad y comodidad garantizada.",
+    sizes: ["28", "30", "32", "34", "36", "38"],
+    colors: ["Negro", "Azul Oscuro"],
   },
   {
     id: 4,
@@ -56,12 +70,18 @@ const featuredProducts = [
     image: product1,
     category: "Camisetas",
     rating: 4.6,
+    description: "Camiseta de diseño exclusivo con estampado street. Para quienes no necesitan permiso para pisar fuerte.",
+    sizes: ["XS", "S", "M", "L", "XL"],
+    colors: ["Blanco", "Negro", "Naranja"],
   },
 ];
 
 const Index = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const { toast } = useToast();
 
   const handleAddToCart = (product: any) => {
@@ -109,16 +129,29 @@ const Index = () => {
     });
   };
 
+  const handleProductClick = (product: any) => {
+    setSelectedProduct(product);
+    setIsProductModalOpen(true);
+  };
+
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar 
         cartItems={totalItems} 
-        onCartClick={() => setIsCartOpen(true)} 
+        onCartClick={() => setIsCartOpen(true)}
+        onContactClick={() => setIsContactModalOpen(true)}
       />
       
       <main className="pt-16">
+        {/* Step Up Logo Section */}
+        <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-stepup">
+          <div className="max-w-4xl mx-auto text-center">
+            <StepUpLogo />
+          </div>
+        </section>
+        
         <Hero />
         
         {/* Featured Products Section */}
@@ -140,10 +173,12 @@ const Index = () => {
                   className="animate-fade-in-up"
                   style={{ animationDelay: `${index * 0.1}s` }}
                 >
-                  <ProductCard
-                    {...product}
-                    onAddToCart={handleAddToCart}
-                  />
+                  <div onClick={() => handleProductClick(product)} className="cursor-pointer">
+                    <ProductCard
+                      {...product}
+                      onAddToCart={handleAddToCart}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
@@ -170,6 +205,20 @@ const Index = () => {
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
       />
+
+      <ProductDetailModal
+        isOpen={isProductModalOpen}
+        onClose={() => setIsProductModalOpen(false)}
+        product={selectedProduct}
+        onAddToCart={handleAddToCart}
+      />
+
+      <ContactModal
+        isOpen={isContactModalOpen}
+        onClose={() => setIsContactModalOpen(false)}
+      />
+
+      <AccessibilityMenu />
     </div>
   );
 };

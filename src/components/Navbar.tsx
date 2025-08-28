@@ -7,9 +7,10 @@ import { ShoppingBag, Search, User, Menu, Heart } from "lucide-react";
 interface NavbarProps {
   cartItems: number;
   onCartClick: () => void;
+  onContactClick?: () => void;
 }
 
-const Navbar = ({ cartItems, onCartClick }: NavbarProps) => {
+const Navbar = ({ cartItems, onCartClick, onContactClick }: NavbarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
@@ -31,9 +32,12 @@ const Navbar = ({ cartItems, onCartClick }: NavbarProps) => {
             <a href="/productos" className="text-foreground hover:text-primary transition-colors">
               Productos
             </a>
-            <a href="#" className="text-foreground hover:text-primary transition-colors">
+            <button
+              onClick={onContactClick}
+              className="text-foreground hover:text-primary transition-colors"
+            >
               Contacto
-            </a>
+            </button>
           </div>
 
           {/* Search Bar */}
@@ -107,12 +111,12 @@ const Navbar = ({ cartItems, onCartClick }: NavbarProps) => {
               >
                 Productos
               </a>
-              <a
-                href="#"
+              <button
+                onClick={onContactClick}
                 className="block px-3 py-2 text-foreground hover:text-primary transition-colors"
               >
                 Contacto
-              </a>
+              </button>
               <a
                 href="/login"
                 className="block px-3 py-2 text-foreground hover:text-primary transition-colors"
