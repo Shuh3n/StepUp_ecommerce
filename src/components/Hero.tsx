@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import heroImage from "@/assets/hero-fashion.jpg";
+// Using the Step Up logo image directly
 
 const Hero = () => {
   return (
@@ -7,8 +7,8 @@ const Hero = () => {
       {/* Background Image */}
       <div className="absolute inset-0 z-0">
         <img
-          src={heroImage}
-          alt="Moda juvenil urbana"
+          src="/lovable-uploads/5b6a5e66-fee1-4903-bf75-da75f3f68c68.png"
+          alt="Step Up - No necesitamos permiso para pisar fuerte"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-background/60 to-background/80"></div>

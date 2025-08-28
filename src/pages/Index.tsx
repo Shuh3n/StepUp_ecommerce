@@ -6,8 +6,8 @@ import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import ProductDetailModal from "@/components/ProductDetailModal";
 import ContactModal from "@/components/ContactModal";
+import FavoritesModal from "@/components/FavoritesModal";
 import AccessibilityMenu from "@/components/AccessibilityMenu";
-import StepUpLogo from "@/components/StepUpLogo";
 
 import Cart from "@/components/Cart";
 import ProductCard from "@/components/ProductCard";
@@ -82,6 +82,7 @@ const Index = () => {
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
   const { toast } = useToast();
 
   const handleAddToCart = (product: any) => {
@@ -142,16 +143,10 @@ const Index = () => {
         cartItems={totalItems} 
         onCartClick={() => setIsCartOpen(true)}
         onContactClick={() => setIsContactModalOpen(true)}
+        onFavoritesClick={() => setIsFavoritesModalOpen(true)}
       />
       
       <main className="pt-16">
-        {/* Step Up Logo Section */}
-        <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-stepup">
-          <div className="max-w-4xl mx-auto text-center">
-            <StepUpLogo />
-          </div>
-        </section>
-        
         <Hero />
         
         {/* Featured Products Section */}
@@ -173,12 +168,12 @@ const Index = () => {
                   className="animate-fade-in-up"
                   style={{ animationDelay: `${index * 0.1}s` }}
                 >
-                  <div onClick={() => handleProductClick(product)} className="cursor-pointer">
+                  <a href={`/producto/${product.id}`} className="block">
                     <ProductCard
                       {...product}
                       onAddToCart={handleAddToCart}
                     />
-                  </div>
+                  </a>
                 </div>
               ))}
             </div>
@@ -216,6 +211,12 @@ const Index = () => {
       <ContactModal
         isOpen={isContactModalOpen}
         onClose={() => setIsContactModalOpen(false)}
+      />
+
+      <FavoritesModal
+        isOpen={isFavoritesModalOpen}
+        onClose={() => setIsFavoritesModalOpen(false)}
+        onAddToCart={handleAddToCart}
       />
 
       <AccessibilityMenu />

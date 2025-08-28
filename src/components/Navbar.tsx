@@ -8,9 +8,10 @@ interface NavbarProps {
   cartItems: number;
   onCartClick: () => void;
   onContactClick?: () => void;
+  onFavoritesClick?: () => void;
 }
 
-const Navbar = ({ cartItems, onCartClick, onContactClick }: NavbarProps) => {
+const Navbar = ({ cartItems, onCartClick, onContactClick, onFavoritesClick }: NavbarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
@@ -52,9 +53,13 @@ const Navbar = ({ cartItems, onCartClick, onContactClick }: NavbarProps) => {
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex items-center space-x-3">
-            <Button variant="ghost" size="icon" className="hidden md:flex">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="hidden md:flex"
+              onClick={onFavoritesClick}
+            >
               <Heart className="h-5 w-5" />
             </Button>
             
