@@ -1,73 +1,88 @@
-# Welcome to your Lovable project
+# StepUP - Tienda en Línea 🛍️
 
-## Project info
+## 🚀 Descripción
 
-**URL**: https://lovable.dev/projects/4923b57f-3541-43a5-b738-6fe72417fcb7
+¡Bienvenido al repositorio de StepUP! Este proyecto es la tienda en línea de nuestra marca de ropa, construida para ofrecer una experiencia de compra moderna y sin fricciones. Desde la navegación del catálogo hasta el checkout, todo está diseñado para que la experiencia del usuario sea increíble.
 
-## How can I edit this code?
+## ✨ Características Principales
 
-There are several ways of editing your application.
+- **Catálogo Interactivo**: 👕 Explora nuestros productos con filtros y búsqueda
+- **Carrito de Compras**: 🛒 Agrega, elimina y actualiza artículos fácilmente antes de comprar
+- **Procesamiento de Pagos Seguro**: 💳 Integración con Stripe para transacciones confiables
+- **Autenticación de Usuario**: 🔐 Inicia sesión, regístrate y gestiona tu cuenta
+- **Diseño Responsivo**: 📱🖥️ Navega sin problemas desde cualquier dispositivo
 
-**Use Lovable**
+## 🛠️ Tecnologías Utilizadas
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/4923b57f-3541-43a5-b738-6fe72417fcb7) and start prompting.
+### Frontend
+- **React**: Para la UI declarativa
+- **TypeScript**: Para un código más seguro y predecible
+- **Tailwind CSS**: Para un desarrollo rápido de estilos
+- **Vite**: Como empaquetador para un desarrollo ágil
 
-Changes made via Lovable will be committed automatically to this repo.
+### Manejo de Estado y Rutas
+- **Redux Toolkit**: Para una gestión de estado centralizada y eficiente
+- **React Router Dom**: Para la navegación en la aplicación
 
-**Use your preferred IDE**
+### Servicios Externos
+- **Stripe**: Para procesar los pagos de forma segura
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## 📂 Estructura del Proyecto
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+```
+/src
+├── assets/                  # 🖼️ Imágenes, íconos y otros recursos
+├── components/              # 🧩 Componentes reutilizables de la UI
+├── pages/                   # 📄 Páginas principales de la aplicación
+├── services/                # 📞 Lógica de peticiones a la API
+├── state/                   # 🧠 Archivos de Redux para la gestión de estado
+├── hooks/                   # 🎣 Custom hooks
+├── styles/                  # 🎨 Estilos globales
+├── App.tsx                  # Componente principal
+└── main.tsx                 # Punto de entrada de la aplicación
+```
 
-Follow these steps:
+## ⬇️ Guía de Instalación y Uso
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+### 1. Requisitos Previos
+Asegúrate de tener Node.js y npm (o Yarn) instalados.
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### 2. Clonar e Instalar
 
-# Step 3: Install the necessary dependencies.
-npm i
+```bash
+# Clona el repositorio
+git clone https://github.com/Shuh3n/StepUp_ecommerce.git
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Ve al directorio del proyecto
+cd stepup-tienda
+
+# Instala las dependencias
+npm install
+```
+
+### 3. Variables de Entorno
+Crea un archivo llamado `.env` en la raíz del proyecto y agrega tus claves de API. Puedes usar el archivo `.env.example` como referencia.
+
+```env
+VITE_STRIPE_PUBLIC_KEY=pk_test_tu_clave_publica_de_stripe
+```
+
+### 4. Iniciar la Aplicación
+
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+¡Listo! La aplicación estará corriendo en http://localhost:5173.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 📄 Licencia
 
-**Use GitHub Codespaces**
+Este proyecto está bajo la licencia MIT. Consulta el archivo [LICENSE](LICENSE) para más detalles.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 📧 Contacto
 
-## What technologies are used for this project?
+¿Tienes preguntas o sugerencias? No dudes en contactar al equipo en santiago.orozcoz.dev@gmail.com
 
-This project is built with:
+---
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/4923b57f-3541-43a5-b738-6fe72417fcb7) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+⭐ ¡Dale una estrella a este repositorio si te gusta el proyecto!
