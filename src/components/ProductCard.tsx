@@ -13,6 +13,7 @@ interface ProductCardProps {
   rating: number;
   isNew?: boolean;
   onAddToCart: (product: any) => void;
+  onClick?: () => void;
 }
 
 const ProductCard = ({
@@ -25,6 +26,7 @@ const ProductCard = ({
   rating,
   isNew,
   onAddToCart,
+  onClick,
 }: ProductCardProps) => {
   const [isLiked, setIsLiked] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -75,7 +77,10 @@ const ProductCard = ({
       </Button>
 
       {/* Product Image */}
-      <div className="relative aspect-square overflow-hidden">
+      <div 
+        className="relative aspect-square overflow-hidden cursor-pointer"
+        onClick={onClick}
+      >
         <img
           src={image}
           alt={name}
@@ -100,7 +105,7 @@ const ProductCard = ({
       </div>
 
       {/* Product Info */}
-      <div className="p-4">
+      <div className="p-4 cursor-pointer" onClick={onClick}>
         <div className="flex items-center justify-between mb-2">
           <Badge variant="outline" className="text-xs">
             {category}

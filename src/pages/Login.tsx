@@ -111,6 +111,24 @@ const Login = () => {
               </Button>
             </form>
 
+            {/* Social Login Section */}
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-2 text-muted-foreground">
+                    O continúa con
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-center text-sm text-muted-foreground mb-4 mt-4">
+                Para habilitar el inicio de sesión con redes sociales, necesitas conectar tu proyecto con Supabase.
+              </p>
+            </div>
+
             <div className="mt-6 text-center">
               <p className="text-muted-foreground">
                 ¿No tienes cuenta?{" "}

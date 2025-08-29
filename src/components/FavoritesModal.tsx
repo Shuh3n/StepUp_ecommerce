@@ -68,7 +68,7 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
             <p className="text-muted-foreground mb-6">
               Agrega productos a tus favoritos para verlos aquí
             </p>
-            <Button onClick={onClose} variant="outline">
+            <Button onClick={() => window.location.href = '/productos'} variant="outline">
               Explorar Productos
             </Button>
           </div>

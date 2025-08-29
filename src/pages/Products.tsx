@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import ProductCard from "@/components/ProductCard";
 import ProductFilters from "@/components/ProductFilters";
+import ProductDetailModal from "@/components/ProductDetailModal";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
 import product1 from "@/assets/product-1.jpg";
@@ -157,6 +158,8 @@ const Products = () => {
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 150000]);
   const [sortBy, setSortBy] = useState("newest");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const { toast } = useToast();
 
   const categories = ["all", ...Array.from(new Set(allProducts.map(p => p.category)))];
@@ -234,6 +237,11 @@ const Products = () => {
     setSortBy("newest");
   };
 
+  const handleProductClick = (product: Product) => {
+    setSelectedProduct(product);
+    setIsProductModalOpen(true);
+  };
+
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
@@ -301,6 +309,7 @@ const Products = () => {
                       <ProductCard
                         {...product}
                         onAddToCart={handleAddToCart}
+                        onClick={() => handleProductClick(product)}
                       />
                     </div>
                   ))}
@@ -317,6 +326,13 @@ const Products = () => {
         items={cartItems}
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
+      />
+
+      <ProductDetailModal
+        isOpen={isProductModalOpen}
+        onClose={() => setIsProductModalOpen(false)}
+        product={selectedProduct}
+        onAddToCart={handleAddToCart}
       />
     </div>
   );
