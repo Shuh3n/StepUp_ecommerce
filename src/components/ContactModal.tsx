@@ -52,9 +52,9 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl animate-scale-in">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold gradient-text">
+          <DialogTitle className="text-2xl font-bold gradient-text animate-fade-in">
             Contáctanos
           </DialogTitle>
         </DialogHeader>
@@ -172,7 +172,7 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
             
             <Button
               type="submit"
-              className="w-full bg-gradient-stepup hover:shadow-red transition-all duration-300"
+              className="w-full bg-gradient-stepup hover:shadow-red transition-all duration-300 hover:scale-105"
             >
               <Send className="h-4 w-4 mr-2" />
               Enviar Mensaje

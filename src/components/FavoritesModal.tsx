@@ -53,9 +53,9 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto animate-scale-in">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold gradient-text flex items-center gap-2">
+          <DialogTitle className="text-2xl font-bold gradient-text flex items-center gap-2 animate-fade-in">
             <Heart className="h-6 w-6 text-red-500 fill-current" />
             Mis Favoritos
           </DialogTitle>
@@ -68,7 +68,11 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
             <p className="text-muted-foreground mb-6">
               Agrega productos a tus favoritos para verlos aquí
             </p>
-            <Button onClick={() => window.location.href = '/productos'} variant="outline">
+            <Button 
+              onClick={() => window.location.href = '/productos'} 
+              variant="outline"
+              className="hover:scale-105 transition-transform duration-200"
+            >
               Explorar Productos
             </Button>
           </div>
@@ -82,7 +86,7 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
               return (
                 <div
                   key={product.id}
-                  className="group relative bg-card rounded-xl overflow-hidden shadow-lg hover:shadow-floating transition-all duration-300"
+                  className="group relative bg-card rounded-xl overflow-hidden shadow-lg hover:shadow-floating transition-all duration-500 hover:scale-105 hover:-translate-y-2 animate-fade-in"
                 >
                   {/* Product Image */}
                   <div className="relative aspect-square overflow-hidden">
@@ -148,7 +152,7 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
 
                     <Button
                       onClick={() => handleAddToCart(product)}
-                      className="w-full bg-gradient-stepup hover:shadow-red transition-all duration-300"
+                      className="w-full bg-gradient-stepup hover:shadow-red transition-all duration-300 hover:scale-105"
                       size="sm"
                     >
                       <ShoppingBag className="h-4 w-4 mr-2" />

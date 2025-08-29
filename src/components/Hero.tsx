@@ -21,22 +21,22 @@ const Hero = () => {
 
       {/* Content */}
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 animate-fade-in-up">
-        <h1 className="text-5xl md:text-7xl font-bold mb-6">
+        <h1 className="text-5xl md:text-7xl font-bold mb-6 animate-fade-in" style={{ animationDelay: '0.2s' }}>
           <span className="gradient-text">Step</span>
           <br />
           <span className="text-foreground">Up</span>
         </h1>
         
-        <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto">
+        <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto animate-fade-in" style={{ animationDelay: '0.4s' }}>
           Eleva tu estilo con la moda juvenil más trendy. Descubre looks únicos que definen tu personalidad
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in" style={{ animationDelay: '0.6s' }}>
           <a href="/productos">
             <Button 
               variant="hero" 
               size="lg" 
-              className="px-8 py-4 text-lg font-semibold"
+              className="px-8 py-4 text-lg font-semibold hover:scale-105 transition-transform duration-200"
             >
               Explorar Colección
             </Button>

@@ -31,22 +31,16 @@ const ProductCard = ({
   const [isLiked, setIsLiked] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  const handleAddToCart = () => {
-    onAddToCart({
-      id,
-      name,
-      price,
-      image,
-      category,
-      quantity: 1,
-    });
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onClick?.(); // Open product detail modal to select size
   };
 
   const discount = originalPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
 
   return (
     <div
-      className="group relative bg-card rounded-2xl overflow-hidden shadow-lg hover:shadow-floating transition-all duration-300 hover:scale-[1.02]"
+      className="group relative bg-card rounded-2xl overflow-hidden shadow-lg hover:shadow-floating transition-all duration-500 hover:scale-[1.05] hover:-translate-y-2 animate-fade-in"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -88,17 +82,17 @@ const ProductCard = ({
         />
         
         {/* Overlay on hover */}
-        <div className={`absolute inset-0 bg-black/20 transition-opacity duration-300 ${
-          isHovered ? "opacity-100" : "opacity-0"
+        <div className={`absolute inset-0 bg-black/30 transition-all duration-500 ${
+          isHovered ? "opacity-100 backdrop-blur-sm" : "opacity-0"
         }`}>
-          <div className="absolute bottom-4 left-4 right-4">
+          <div className="absolute bottom-4 left-4 right-4 transform transition-all duration-300 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}">
             <Button
-              variant="glass"
-              className="w-full"
+              variant="default"
+              className="w-full bg-red-500/90 hover:bg-red-600/90 backdrop-blur-md border border-red-400/30 text-white shadow-lg hover:shadow-red-500/25 transition-all duration-300 hover:scale-105"
               onClick={handleAddToCart}
             >
               <ShoppingBag className="h-4 w-4 mr-2" />
-              Agregar al Carrito
+              Ver Detalles
             </Button>
           </div>
         </div>

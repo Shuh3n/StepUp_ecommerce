@@ -35,6 +35,11 @@ const ProductDetailModal = ({ isOpen, onClose, product, onAddToCart }: ProductDe
     : 0;
 
   const handleAddToCart = () => {
+    if (!selectedSize && product.sizes && product.sizes.length > 0) {
+      // Show error message if size is required but not selected
+      return;
+    }
+    
     onAddToCart({
       ...product,
       selectedSize,
@@ -51,12 +56,12 @@ const ProductDetailModal = ({ isOpen, onClose, product, onAddToCart }: ProductDe
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden p-0 bg-transparent border-none">
+      <DialogContent className="max-w-5xl max-h-[95vh] overflow-hidden p-0 bg-transparent border-none animate-scale-in">
         {/* Semi-transparent backdrop */}
-        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm animate-fade-in" />
         
         {/* Modal content */}
-        <div className="relative bg-card/95 backdrop-blur-lg border border-white/20 rounded-2xl mx-auto my-8 max-w-4xl overflow-hidden shadow-2xl">
+        <div className="relative bg-card/95 backdrop-blur-lg border border-white/20 rounded-2xl mx-auto my-8 max-w-4xl overflow-hidden shadow-2xl animate-fade-in-up">
           <div className="grid grid-cols-1 lg:grid-cols-2">
             {/* Product Image */}
             <div className="relative aspect-square lg:aspect-auto">
@@ -190,9 +195,16 @@ const ProductDetailModal = ({ isOpen, onClose, product, onAddToCart }: ProductDe
 
               {/* Action Buttons */}
               <div className="space-y-3 pt-4">
+                {product.sizes && product.sizes.length > 0 && !selectedSize && (
+                  <p className="text-sm text-red-500 text-center animate-pulse">
+                    Selecciona una talla para continuar
+                  </p>
+                )}
+                
                 <Button
                   onClick={handleAddToCart}
-                  className="w-full bg-gradient-stepup hover:shadow-red transition-all duration-300 h-12 text-lg"
+                  disabled={product.sizes && product.sizes.length > 0 && !selectedSize}
+                  className="w-full bg-gradient-stepup hover:shadow-red transition-all duration-300 h-12 text-lg disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105"
                 >
                   <ShoppingBag className="h-5 w-5 mr-2" />
                   Añadir al carrito
@@ -201,7 +213,7 @@ const ProductDetailModal = ({ isOpen, onClose, product, onAddToCart }: ProductDe
                 <Button
                   onClick={handleViewDetails}
                   variant="outline"
-                  className="w-full h-12 text-lg"
+                  className="w-full h-12 text-lg hover:scale-105 transition-transform duration-200"
                 >
                   Ver detalles completos
                 </Button>
