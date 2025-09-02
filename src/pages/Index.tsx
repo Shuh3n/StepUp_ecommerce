@@ -12,9 +12,9 @@ import AccessibilityMenu from "@/components/AccessibilityMenu";
 import Cart from "@/components/Cart";
 import ProductCard from "@/components/ProductCard";
 import { ArrowRight } from "lucide-react";
-import product1 from "@/assets/product-1.jpg";
-import product2 from "@/assets/product-2.jpg";
-import product3 from "@/assets/product-3.jpg";
+import product1 from "@/assets/products/product-1.jpg";
+import product2 from "@/assets/products/product-2.jpg";
+import product3 from "@/assets/products/product-3.jpg";
 
 interface CartItem {
   id: number;

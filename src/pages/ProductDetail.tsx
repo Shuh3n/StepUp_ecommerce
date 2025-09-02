@@ -7,9 +7,9 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Star, Heart, ShoppingBag, Minus, Plus } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import AccessibilityMenu from "@/components/AccessibilityMenu";
-import product1 from "@/assets/product-1.jpg";
-import product2 from "@/assets/product-2.jpg";
-import product3 from "@/assets/product-3.jpg";
+import product1 from "@/assets/products/product-1.jpg";
+import product2 from "@/assets/products/product-2.jpg";
+import product3 from "@/assets/products/product-3.jpg";
 
 const allProducts = [
   {

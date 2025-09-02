@@ -5,9 +5,9 @@ import ProductFilters from "@/components/ProductFilters";
 import ProductDetailModal from "@/components/ProductDetailModal";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
-import product1 from "@/assets/product-1.jpg";
-import product2 from "@/assets/product-2.jpg";
-import product3 from "@/assets/product-3.jpg";
+import product1 from "@/assets/products/product-1.jpg";
+import product2 from "@/assets/products/product-2.jpg";
+import product3 from "@/assets/products/product-3.jpg";
 
 interface Product {
   id: number;

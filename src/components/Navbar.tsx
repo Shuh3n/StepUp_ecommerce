@@ -89,7 +89,7 @@ const Navbar = ({
           {/* Logo y nombre */}
           <Link to="/" className="flex items-center space-x-2">
             <img
-              src="https://imgur.com/a/y1F4Fwz"
+              src="src/assets/logos/logo-512.png"
               alt="STEPUP Logo"
               className="h-8 w-auto"
             />
