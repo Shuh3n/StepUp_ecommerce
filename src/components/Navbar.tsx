@@ -1,8 +1,16 @@
-
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingBag, User, Menu, Heart, Mail, Home, Package } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ShoppingBag, User, Menu, Heart, Mail, Home, Package, LogOut } from "lucide-react";
+import { supabase } from '../lib/supabase';
+import { useNavigate } from "react-router-dom";
+import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
   cartItems: number;
@@ -11,8 +19,68 @@ interface NavbarProps {
   onFavoritesClick?: () => void;
 }
 
-const Navbar = ({ cartItems, onCartClick, onContactClick, onFavoritesClick }: NavbarProps) => {
+const Navbar = ({ 
+  cartItems, 
+  onCartClick, 
+  onContactClick, 
+  onFavoritesClick 
+}: Omit<NavbarProps, 'isAuthenticated'>) => {
+  const { isAuthenticated } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (!error) {
+      navigate('/login');
+      localStorage.removeItem('stepup-favorites');
+    }
+  };
+
+  const UserMenu = () => {
+    if (!isAuthenticated) {
+      return (
+        <Button 
+          variant="ghost" 
+          size="icon" 
+          className="hidden md:flex hover:scale-110 transition-all duration-200 hover:bg-primary/20"
+          onClick={() => navigate('/login')}
+        >
+          <User className="h-5 w-5" />
+        </Button>
+      );
+    }
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="hidden md:flex hover:scale-110 transition-all duration-200 hover:bg-primary/20"
+          >
+            <User className="h-5 w-5" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48 glass border-white/20">
+          <DropdownMenuItem 
+            onClick={() => navigate('/profile')}
+            className="cursor-pointer flex items-center gap-2 hover:bg-primary/20"
+          >
+            <User className="h-4 w-4" />
+            Mi Perfil
+          </DropdownMenuItem>
+          <DropdownMenuItem 
+            onClick={handleLogout}
+            className="cursor-pointer flex items-center gap-2 text-red-500 hover:text-red-600 hover:bg-red-500/20"
+          >
+            <LogOut className="h-4 w-4" />
+            Cerrar Sesión
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/40 backdrop-blur-xl border-b border-border/20 transition-all duration-300">
@@ -54,14 +122,7 @@ const Navbar = ({ cartItems, onCartClick, onContactClick, onFavoritesClick }: Na
               <Heart className="h-5 w-5" />
             </Button>
             
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="hidden md:flex hover:scale-110 transition-all duration-200 hover:bg-primary/20"
-              onClick={() => window.location.href = '/login'}
-            >
-              <User className="h-5 w-5" />
-            </Button>
+            <UserMenu />
 
             <Button 
               variant="ghost" 
@@ -123,13 +184,32 @@ const Navbar = ({ cartItems, onCartClick, onContactClick, onFavoritesClick }: Na
                 <Heart className="h-4 w-4" />
                 Favoritos
               </button>
-              <a
-                href="/login"
-                className="block px-3 py-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 flex items-center gap-2"
-              >
-                <User className="h-4 w-4" />
-                Iniciar Sesión
-              </a>
+              {isAuthenticated ? (
+                <>
+                  <button
+                    onClick={() => navigate('/profile')}
+                    className="block w-full px-3 py-2 text-left text-foreground hover:text-primary transition-all duration-300 hover:scale-105 flex items-center gap-2"
+                  >
+                    <User className="h-4 w-4" />
+                    Mi Perfil
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="block w-full px-3 py-2 text-left text-red-500 hover:text-red-600 transition-all duration-300 hover:scale-105 flex items-center gap-2"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Cerrar Sesión
+                  </button>
+                </>
+              ) : (
+                <a
+                  href="/login"
+                  className="block px-3 py-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 flex items-center gap-2"
+                >
+                  <User className="h-4 w-4" />
+                  Iniciar Sesión
+                </a>
+              )}
             </div>
           </div>
         )}

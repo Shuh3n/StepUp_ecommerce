@@ -1,4 +1,3 @@
-
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from '../lib/supabase';
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -20,6 +20,25 @@ const Login = () => {
       title: "Funcionalidad en desarrollo",
       description: "El sistema de autenticación estará disponible pronto",
     });
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/profile`
+        }
+      });
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error signing in with Google:', error);
+      toast({
+        title: "Error",
+        description: "No se pudo iniciar sesión con Google",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -53,7 +72,32 @@ const Login = () => {
               </CardDescription>
             </div>
           </CardHeader>
-          
+         
+          {/* Social Login Section */}
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center mb-6">
+                  <div className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-background px-4 text-muted-foreground">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full flex items-center justify-center gap-2 mt-1 mb-6"
+                      onClick={handleGoogleLogin}
+                    >
+                      <img
+                        src="https://www.svgrepo.com/show/475656/google-color.svg"
+                        alt="Google"
+                        className="h-5 w-5"
+                      />
+                      Iniciar sesión con Google
+                    </Button> </span>
+                </div>
+              </div>
+            </div>
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
@@ -110,24 +154,6 @@ const Login = () => {
                 Iniciar Sesión
               </Button>
             </form>
-
-            {/* Social Login Section */}
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">
-                    O continúa con
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-center text-sm text-muted-foreground mb-4 mt-4">
-                Para habilitar el inicio de sesión con redes sociales, necesitas conectar tu proyecto con Supabase.
-              </p>
-            </div>
 
             <div className="mt-6 text-center">
               <p className="text-muted-foreground">
