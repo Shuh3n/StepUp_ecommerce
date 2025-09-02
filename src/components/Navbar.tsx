@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ShoppingBag, User, Menu, Heart, Mail, Home, Package, LogOut } from "lucide-react";
 import { supabase } from '../lib/supabase';
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from '../context/AuthContext';
 
 interface NavbarProps {
@@ -85,13 +85,16 @@ const Navbar = ({
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/40 backdrop-blur-xl border-b border-border/20 transition-all duration-300">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <div className="flex-shrink-0">
-            <a href="/" className="text-2xl font-bold gradient-text hover:scale-105 transition-transform duration-200">
-              Step Up
-            </a>
-          </div>
+        <div className="flex justify-between items-center h-16">
+          {/* Logo y nombre */}
+          <Link to="/" className="flex items-center space-x-2">
+            <img
+              src="src\assets\logo.png"
+              alt="STEPUP Logo"
+              className="h-8 w-auto"
+            />
+            <span className="font-bold text-xl">STEPUP</span>
+          </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-8">
