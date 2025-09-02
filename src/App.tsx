@@ -15,6 +15,7 @@ import ProductDetail from "./pages/ProductDetail";
 import NotFound from "./pages/NotFound";
 import PhoneRequest from "./pages/PhoneRequest";
 import Profile from "./pages/Profile";
+import VerifyEmail from "./pages/VerifyEmail";
 
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => {
             <Route path="/producto/:id" element={<ProductDetail />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             
             {/* Ruta específica para nuevos usuarios de Google */}
             <Route 

@@ -65,6 +65,11 @@ const ProtectedRoute = ({
     return <Navigate to="/complete-profile" replace />;
   }
 
+  // Si la ruta es /verifyEmail y no está autenticado, redirigir a login
+  if (location.pathname === '/verifyEmail' && !isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
   // Si requiere autenticación y tiene datos, permitir acceso
   if (requiresAuth && hasUserData) {
     return <>{children}</>;
