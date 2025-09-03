@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../lib/supabase'; // Asegúrate de que la ruta sea correcta
+import { supabase } from '../lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 
 const AuthCallback = () => {
@@ -9,31 +9,70 @@ const AuthCallback = () => {
 
   useEffect(() => {
     const handleAuthCallback = async () => {
-      // Intenta obtener la sesión de Supabase
-      const { data, error } = await supabase.auth.getSession();
+      try {
+        // Primero, procesar el hash de la URL para completar el flujo de OAuth
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Error al obtener la sesión:', sessionError);
+          throw sessionError;
+        }
 
-      if (error) {
-        console.error('Error al procesar el callback de autenticación:', error);
+        if (!session) {
+          throw new Error('No se pudo obtener la sesión de autenticación');
+        }
+
+        // Usuario autenticado correctamente
+        console.log('Usuario autenticado:', session.user.id);
+
+        // Verificar si el usuario existe en nuestra tabla 'users'
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, phone, identification')
+          .eq('auth_id', session.user.id)
+          .maybeSingle();
+
+        if (userError) {
+          console.error('Error al verificar usuario en BD:', userError);
+          // Si hay error al verificar, asumimos que no existe y redirigimos a completar perfil
+          navigate('/complete-profile', { replace: true });
+          return;
+        }
+
+        if (userData) {
+          // Usuario EXISTE en nuestra BD - verificar si tiene perfil completo
+          const hasCompleteProfile = userData.phone && userData.identification;
+          
+          if (hasCompleteProfile) {
+            toast({
+              title: '¡Bienvenido de vuelta!',
+              description: 'Has iniciado sesión correctamente.',
+            });
+            navigate('/profile', { replace: true });
+          } else {
+            toast({
+              title: 'Completa tu perfil',
+              description: 'Necesitamos más información para continuar.',
+            });
+            navigate('/complete-profile', { replace: true });
+          }
+        } else {
+          // Usuario NO EXISTE en nuestra BD - redirigir a completar perfil
+          toast({
+            title: '¡Bienvenido!',
+            description: 'Completa tu perfil para comenzar.',
+          });
+          navigate('/complete-profile', { replace: true });
+        }
+
+      } catch (error: any) {
+        console.error('Error en el callback de autenticación:', error);
         toast({
           title: 'Error de autenticación',
-          description: 'No pudimos verificar tu sesión. Intenta iniciar sesión.',
+          description: error.message || 'No pudimos completar el inicio de sesión.',
           variant: 'destructive',
         });
-        navigate('/login'); // Redirige a la página de inicio de sesión
-        return;
-      }
-
-      if (data.session) {
-        // La sesión ha sido verificada con éxito
-        toast({
-          title: '¡Email confirmado!',
-          description: 'Tu cuenta ha sido verificada. ¡Bienvenido!',
-        });
-        // Redirige al usuario a la página de inicio o a donde sea necesario
-        navigate('/profile', { replace: true });
-      } else {
-        // La sesión no es válida, redirigir a un login
-        navigate('/login');
+        navigate('/login', { replace: true });
       }
     };
 
@@ -42,7 +81,10 @@ const AuthCallback = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center">
-      <p>Verificando tu email...</p>
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+        <p className="text-muted-foreground">Procesando autenticación...</p>
+      </div>
     </div>
   );
 };

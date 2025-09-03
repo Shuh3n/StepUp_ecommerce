@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,20 +6,86 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '../lib/supabase';
+import { useNavigate } from "react-router-dom";
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Verificar si el usuario tiene un perfil completo en nuestra base de datos
+  const checkUserProfileExists = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id')
+        .eq('auth_id', userId)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error checking user profile existence:', error);
+        return false;
+      }
+
+      return !!data;
+    } catch (error) {
+      console.error('Exception checking user profile existence:', error);
+      return false;
+    }
+  };
+
+  // Manejar la redirección después del login exitoso
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          try {
+            // Verificar si el usuario tiene perfil completo en nuestra base de datos
+            const profileExists = await checkUserProfileExists(session.user.id);
+            
+            if (profileExists) {
+              // Usuario con perfil completo - redirigir a profile
+              navigate('/profile');
+            } else {
+              // Usuario sin perfil - redirigir a complete-profile
+              navigate('/complete-profile');
+            }
+          } catch (error) {
+            console.error('Error handling auth state change:', error);
+            // En caso de error, redirigir a complete-profile por seguridad
+            navigate('/complete-profile');
+          }
+        }
+      }
+    );
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Aquí iría la lógica de autenticación
-    toast({
-      title: "Funcionalidad en desarrollo",
-      description: "El sistema de autenticación estará disponible pronto",
-    });
+    
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) throw error;
+
+      // El redireccionamiento se manejará automáticamente en el useEffect
+      // a través del listener onAuthStateChange
+
+    } catch (error: any) {
+      console.error('Error signing in:', error);
+      toast({
+        title: "Error",
+        description: error.message || "No se pudo iniciar sesión",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleGoogleLogin = async () => {
@@ -27,15 +93,16 @@ const Login = () => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/profile`
+          redirectTo: `${window.location.origin}/auth-callback`
         }
       });
+      
       if (error) throw error;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error signing in with Google:', error);
       toast({
         title: "Error",
-        description: "No se pudo iniciar sesión con Google",
+        description: error.message || "No se pudo iniciar sesión con Google",
         variant: "destructive",
       });
     }
@@ -74,29 +141,30 @@ const Login = () => {
           </CardHeader>
          
           {/* Social Login Section */}
-            <div className="mt-6">
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center mb-6">
-                  <div className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-4 text-muted-foreground">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full flex items-center justify-center gap-2 mt-1 mb-6"
-                      onClick={handleGoogleLogin}
-                    >
-                      <img
-                        src="https://www.svgrepo.com/show/475656/google-color.svg"
-                        alt="Google"
-                        className="h-5 w-5"
-                      />
-                      Iniciar sesión con Google
-                    </Button> </span>
-                </div>
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center mb-6">
+                <div className="w-full border-t border-border" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-4 text-muted-foreground">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full flex items-center justify-center gap-2 mt-1 mb-6"
+                    onClick={handleGoogleLogin}
+                  >
+                    <img
+                      src="https://www.svgrepo.com/show/475656/google-color.svg"
+                      alt="Google"
+                      className="h-5 w-5"
+                    />
+                    Iniciar sesión con Google
+                  </Button>
+                </span>
               </div>
             </div>
+          </div>
 
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -143,7 +211,7 @@ const Login = () => {
 
               <div className="flex items-center justify-between">
                 <a
-                  href="#"
+                  href="/forgot-password"
                   className="text-sm text-primary hover:underline"
                 >
                   ¿Olvidaste tu contraseña?
