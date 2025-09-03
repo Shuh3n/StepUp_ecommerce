@@ -3,10 +3,13 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Mail, ArrowLeft } from 'lucide-react';
+import { Mail, ArrowLeft, Loader2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase'; // Asegúrate de que esta ruta sea correcta
 
 const VerifyEmail = () => {
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(0);
+  const [isResending, setIsResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState({ message: '', type: '' });
   const location = useLocation();
   const navigate = useNavigate();
   const email = location.state?.email || '';
@@ -18,23 +21,52 @@ const VerifyEmail = () => {
       return;
     }
 
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    // Iniciar el contador solo si es mayor a 0
+    if (countdown > 0) {
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
 
-    return () => clearInterval(timer);
-  }, [email, navigate]);
+      return () => clearInterval(timer);
+    }
+  }, [email, navigate, countdown]);
 
   const handleResend = async () => {
-    // Lógica para reenviar el email de verificación
-    setCountdown(30);
-    // Aquí puedes implementar el reenvío del email
+    if (countdown > 0) return;
+    
+    setIsResending(true);
+    setResendStatus({ message: '', type: '' });
+    
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setResendStatus({ 
+        message: 'Email de verificación reenviado con éxito.', 
+        type: 'success' 
+      });
+      setCountdown(30); // Iniciar cuenta regresiva de 30 segundos
+    } catch (error) {
+      console.error('Error al reenviar email:', error);
+      setResendStatus({ 
+        message: error.message || 'Error al reenviar el email. Intenta nuevamente.', 
+        type: 'error' 
+      });
+    } finally {
+      setIsResending(false);
+    }
   };
 
   return (
@@ -71,6 +103,17 @@ const VerifyEmail = () => {
           </CardHeader>
           
           <CardContent className="space-y-6">
+            {/* Mostrar mensaje de estado */}
+            {resendStatus.message && (
+              <div className={`p-3 rounded-lg text-center text-sm ${
+                resendStatus.type === 'success' 
+                  ? 'bg-green-50 text-green-700 border border-green-200' 
+                  : 'bg-red-50 text-red-700 border border-red-200'
+              }`}>
+                {resendStatus.message}
+              </div>
+            )}
+            
             {/* Datos de la cuenta - Estilo consistente */}
             <div className="border border-border rounded-lg p-4 bg-background">
               <h4 className="font-medium text-foreground text-sm mb-3">
@@ -103,10 +146,19 @@ const VerifyEmail = () => {
               <Button 
                 variant="outline" 
                 onClick={handleResend}
-                disabled={countdown > 0}
+                disabled={countdown > 0 || isResending}
                 className="w-full border-border text-foreground hover:bg-accent"
               >
-                {countdown > 0 ? `Reenviar en ${countdown}s` : 'Reenviar email'}
+                {isResending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enviando...
+                  </>
+                ) : countdown > 0 ? (
+                  `Reenviar en ${countdown}s`
+                ) : (
+                  'Reenviar email'
+                )}
               </Button>
             </div>
 
@@ -130,7 +182,7 @@ const VerifyEmail = () => {
                 ¿No recibiste el email?{' '}
                 <button 
                   onClick={handleResend}
-                  disabled={countdown > 0}
+                  disabled={countdown > 0 || isResending}
                   className="text-primary hover:underline font-medium disabled:opacity-50"
                 >
                   Reenviar verificación
