@@ -68,8 +68,7 @@ const PhoneRequest = () => {
     checkUser();
   }, [navigate, fullName]);
 
-
-  // Verificar si la cédula ya existe
+// Verificar si la cédula ya existe
   const checkIdentificationExists = async (id: string) => {
     if (!id) return false;
     
@@ -261,13 +260,34 @@ const PhoneRequest = () => {
         throw error;
       }
 
+      // 🔥 ACTUALIZACIÓN CRÍTICA: Forzar refresh de la sesión
+      console.log('Perfil guardado. Actualizando sesión...');
+      const { data: { session: updatedSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Error al actualizar sesión:', sessionError);
+        throw sessionError;
+      }
+
+      if (!updatedSession) {
+        console.error('No se pudo obtener la sesión actualizada');
+        throw new Error('Sesión no disponible');
+      }
+
+      console.log('Sesión actualizada correctamente. Redirigiendo...');
+      
       toast({
         title: "¡Perfil completado!",
         description: "Tu información ha sido guardada correctamente.",
       });
 
-      // Redirigir inmediatamente después del éxito
-      navigate('/profile', { replace: true });
+      // 🔥 ALTERNATIVA 1: Usar window.location para forzar recarga completa
+      window.location.href = '/profile';
+
+      // 🔥 ALTERNATIVA 2: Redirigir con delay para asegurar
+      // setTimeout(() => {
+      //   navigate('/profile', { replace: true });
+      // }, 100);
 
     } catch (error: any) {
       console.error('Error in handleSubmit:', error);
