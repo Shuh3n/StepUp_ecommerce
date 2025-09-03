@@ -53,7 +53,7 @@ const Profile = () => {
     };
 
     return (
-        <div className="min-h-screen bg-background">
+        <div className="w-[70vw] mx-auto">
             <Navbar cartItems={0} onCartClick={function (): void {
                 throw new Error("Function not implemented.");
             } }/>

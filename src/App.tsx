@@ -17,6 +17,7 @@ import PhoneRequest from "./pages/PhoneRequest";
 import Profile from "./pages/Profile";
 import VerifyEmail from "./pages/VerifyEmail";
 import AuthCallback from "./pages/AuthCallback";
+import Admin from "./pages/Admin";
 
 
 const queryClient = new QueryClient();
@@ -49,6 +50,7 @@ const App = () => {
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/admin" element={<Admin />} />
             
             {/* Ruta específica para nuevos usuarios de Google */}
             <Route 
@@ -69,6 +71,16 @@ const App = () => {
                 </ProtectedRoute>
               } 
             />
+            {/*
+             <Route 
+                path="/admin"
+                element={
+                  <ProtectedRoute>
+                    <Admin />
+                  </ProtectedRoute>
+               }
+            />
+             */ }
 
             {/* Ruta catch-all */}
             <Route path="*" element={<NotFound />} />
