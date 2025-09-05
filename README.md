@@ -1,4 +1,5 @@
 # StepUP - Tienda en Línea 🛍️
+## 🔗LINK: stepupstore.vercel.app
 
 ## 🚀 Descripción
 
@@ -42,38 +43,6 @@
 └── main.tsx                 # Punto de entrada de la aplicación
 ```
 
-## ⬇️ Guía de Instalación y Uso
-
-### 1. Requisitos Previos
-Asegúrate de tener Node.js y npm (o Yarn) instalados.
-
-### 2. Clonar e Instalar
-
-```bash
-# Clona el repositorio
-git clone https://github.com/Shuh3n/StepUp_ecommerce.git
-
-# Ve al directorio del proyecto
-cd stepup-tienda
-
-# Instala las dependencias
-npm install
-```
-
-### 3. Variables de Entorno
-Crea un archivo llamado `.env` en la raíz del proyecto y agrega tus claves de API. Puedes usar el archivo `.env.example` como referencia.
-
-```env
-VITE_STRIPE_PUBLIC_KEY=pk_test_tu_clave_publica_de_stripe
-```
-
-### 4. Iniciar la Aplicación
-
-```bash
-npm run dev
-```
-
-¡Listo! La aplicación estará corriendo en http://localhost:5173.
 
 ## 📄 Licencia
 
