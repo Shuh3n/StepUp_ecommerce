@@ -13,7 +13,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ProductDetail from "./pages/ProductDetail";
 import NotFound from "./pages/NotFound";
-import PhoneRequest from "./pages/PhoneRequest";
+import CompleteProfile from "./pages/CompleteProfile";
 import Profile from "./pages/Profile";
 import VerifyEmail from "./pages/VerifyEmail";
 import AuthCallback from "./pages/AuthCallback";
@@ -57,7 +57,7 @@ const App = () => {
               path="/complete-profile" 
               element={
                 <ProtectedRoute requiresAuth requiresNewUser>
-                  <PhoneRequest />
+                  <CompleteProfile />
                 </ProtectedRoute>
               } 
             />
@@ -91,5 +91,6 @@ const App = () => {
     </AuthProvider>
   );
 };
+
 
 export default App;

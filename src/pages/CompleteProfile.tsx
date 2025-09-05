@@ -10,6 +10,7 @@ const PhoneRequest = () => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [confirmPhoneNumber, setConfirmPhoneNumber] = useState("");
   const [identification, setIdentification] = useState("");
+  const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [phoneError, setPhoneError] = useState("");
@@ -36,43 +37,38 @@ const PhoneRequest = () => {
 
         setUserSession(session);
 
-        // Check if user is Google user
-        const isGoogleUser = session.user.app_metadata?.provider === 'google';
-        
-        if (!isGoogleUser) {
-          navigate('/profile');
-          return;
-        }
-
-        // Get user data with better error handling
+        // Check if user has a complete profile
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('phone, identification')
+          .select('phone, identification, full_name')
           .eq('auth_id', session.user.id)
-          .maybeSingle(); // Use maybeSingle instead of single
+          .maybeSingle();
 
         if (userError) {
           console.error('User data error:', userError);
-          // Don't redirect on error, let user complete profile
           return;
         }
 
-        // If user already has phone, redirect to profile
-        if (userData?.phone) {
+        // If user already has phone and identification, redirect to profile
+        if (userData?.phone && userData?.identification) {
           navigate('/profile');
           return;
+        }
+
+        // Pre-fill name from Google if available
+        if (session.user.user_metadata?.name && !fullName) {
+          setFullName(session.user.user_metadata.name);
         }
 
       } catch (error) {
         console.error('Error in checkUser:', error);
-        // Don't redirect on error, let user complete profile
       }
     };
 
     checkUser();
-  }, [navigate]);
+  }, [navigate, fullName]);
 
-  // Verificar si la cédula ya existe
+// Verificar si la cédula ya existe
   const checkIdentificationExists = async (id: string) => {
     if (!id) return false;
     
@@ -175,7 +171,6 @@ const PhoneRequest = () => {
       setIsChecking(false);
     }
   };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -189,16 +184,15 @@ const PhoneRequest = () => {
       return;
     }
 
-    if (!identification) {
+    if (!identification || !fullName) {
       toast({
         title: "Error",
-        description: "Por favor, ingresa tu cédula",
+        description: "Por favor, completa todos los campos obligatorios",
         variant: "destructive",
       });
       return;
     }
 
-    // Verificar errores de validación
     if (identificationError || phoneError) {
       toast({
         title: "Error",
@@ -234,7 +228,6 @@ const PhoneRequest = () => {
         return;
       }
 
-      // Si todo está bien, proceder con el guardado
       if (!userSession?.user) {
         toast({
           title: "Error de autenticación",
@@ -245,47 +238,57 @@ const PhoneRequest = () => {
         return;
       }
 
-      // Use update instead of upsert for better control
+      // Crear o actualizar el registro completo
       const { error } = await supabase
         .from('users')
-        .update({
-          phone: phoneNumber.toString(),
+        .upsert({
+          auth_id: userSession.user.id,
           identification: identification,
+          full_name: fullName,
+          email: userSession.user.email,
+          phone: phoneNumber.toString(),
+          email_verified: true,
+          created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-        })
-        .eq('auth_id', userSession.user.id);
+          last_login: new Date().toISOString(),
+          login_count: 1,
+          order_count: 0
+        });
 
       if (error) {
-        console.error('Error updating user:', error);
-        
-        // If update fails, try insert
-        if (error.code === 'PGRST116') { // Record not found
-          const { error: insertError } = await supabase
-            .from('users')
-            .insert({
-              auth_id: userSession.user.id,
-              phone: phoneNumber.toString(),
-              identification: identification,
-              email: userSession.user.email,
-              full_name: userSession.user.user_metadata?.name || '',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            });
-
-          if (insertError) {
-            throw insertError;
-          }
-        } else {
-          throw error;
-        }
+        console.error('Error creating user:', error);
+        throw error;
       }
 
+      // 🔥 ACTUALIZACIÓN CRÍTICA: Forzar refresh de la sesión
+      console.log('Perfil guardado. Actualizando sesión...');
+      const { data: { session: updatedSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Error al actualizar sesión:', sessionError);
+        throw sessionError;
+      }
+
+      if (!updatedSession) {
+        console.error('No se pudo obtener la sesión actualizada');
+        throw new Error('Sesión no disponible');
+      }
+
+      console.log('Sesión actualizada correctamente. Redirigiendo...');
+      
       toast({
         title: "¡Perfil completado!",
-        description: "Tu número de teléfono y cédula han sido guardados correctamente.",
+        description: "Tu información ha sido guardada correctamente.",
       });
 
-      navigate('/profile');
+      // 🔥 ALTERNATIVA 1: Usar window.location para forzar recarga completa
+      window.location.href = '/profile';
+
+      // 🔥 ALTERNATIVA 2: Redirigir con delay para asegurar
+      // setTimeout(() => {
+      //   navigate('/profile', { replace: true });
+      // }, 100);
+
     } catch (error: any) {
       console.error('Error in handleSubmit:', error);
       toast({
@@ -310,14 +313,28 @@ const PhoneRequest = () => {
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold gradient-text">Completa tu perfil</h1>
           <p className="text-muted-foreground mt-2">
-            Por favor, ingresa tu número de teléfono y cédula para continuar
+            Por favor, ingresa tu información para continuar
           </p>
         </div>
 
         <div className="bg-card rounded-lg p-6 glass border-white/20">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="identification">Cédula</Label>
+              <Label htmlFor="fullName">Nombre completo *</Label>
+              <Input
+                id="fullName"
+                type="text"
+                placeholder="Ej: Juan Pérez"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                className="glass border-white/20"
+                required
+                disabled={loading}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="identification">Cédula *</Label>
               <Input
                 id="identification"
                 type="text"
@@ -341,7 +358,7 @@ const PhoneRequest = () => {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="phone">Número de teléfono</Label>
+              <Label htmlFor="phone">Número de teléfono *</Label>
               <Input
                 id="phone"
                 type="tel"
@@ -365,7 +382,7 @@ const PhoneRequest = () => {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="confirm-phone">Confirmar número de teléfono</Label>
+              <Label htmlFor="confirm-phone">Confirmar número de teléfono *</Label>
               <Input
                 id="confirm-phone"
                 type="tel"
@@ -394,6 +411,7 @@ const PhoneRequest = () => {
                 confirmPhoneNumber === "" ||
                 phoneNumber !== confirmPhoneNumber ||
                 identification === "" ||
+                fullName === "" ||
                 !!identificationError ||
                 !!phoneError ||
                 isChecking

@@ -176,19 +176,6 @@ const VerifyEmail = () => {
             >
               Ir a iniciar sesión
             </Button>
-
-            <div className="text-center">
-              <p className="text-muted-foreground text-sm">
-                ¿No recibiste el email?{' '}
-                <button 
-                  onClick={handleResend}
-                  disabled={countdown > 0 || isResending}
-                  className="text-primary hover:underline font-medium disabled:opacity-50"
-                >
-                  Reenviar verificación
-                </button>
-              </p>
-            </div>
           </CardContent>
         </Card>
       </div>
