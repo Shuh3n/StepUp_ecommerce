@@ -4,8 +4,12 @@ import React, { useState, useEffect } from "react";
 interface Product {
     id: number;
     name: string;
+    category: string;
     stock: number;
     stock_minimo: number;
+    price: number;
+    image_url: string;
+    description: string;
 }
 
 interface InventoryMovement {
@@ -78,6 +82,162 @@ interface InventoryMovement {
 // Si quieres también puedes definir Order aquí...
 
 const Admin = () => {
+    // Handler para crear producto
+    const handleCreateProduct = async (e: React.FormEvent) => {
+        e.preventDefault();
+        // Validar nombre único
+        const nameExists = products.some(p => p.name === newProduct.name);
+        if (nameExists) {
+            setNameError('Ya existe un producto con ese nombre');
+            return;
+        }
+        setNameError(null);
+        // Validar imagen
+        if (!imageFile) {
+            setImageError('La imagen es obligatoria');
+            return;
+        }
+        setImageError(null);
+        // Subir imagen al bucket 'product-images' en Supabase Storage
+        // Subir imagen al bucket 'product-images' en Supabase Storage
+        if (!(imageFile instanceof File)) {
+            setImageError('Archivo de imagen inválido');
+            return;
+        }
+
+        const fileName = `product-${newProduct.name.replace(/\s+/g, '-')}-${Date.now()}`;
+        const { data, error } = await supabase.storage
+            .from('product-images')
+            .upload(fileName, imageFile);
+
+        if (error) {
+            setImageError(`Error al subir la imagen: ${error.message}`);
+            return;
+        }
+        // Obtener la URL pública de la imagen subida
+        const publicUrl = supabase.storage.from('product-images').getPublicUrl(fileName).data.publicUrl;
+        // Crear producto en Supabase con la URL pública de la imagen
+        const { error: insertError } = await supabase.from('products').insert({
+            name: newProduct.name,
+            category: newProduct.category,
+            stock: newProduct.stock,
+            stock_minimo: newProduct.stock_minimo,
+            price: newProduct.price,
+            image_url: publicUrl, // Usar publicUrl correctamente
+            description: newProduct.description
+        });
+        if (!insertError) {
+            toast({ title: 'Producto creado' });
+            setShowCreateProductModal(false);
+            setNewProduct({ name: '', category: '', stock: 1, stock_minimo: 0, price: 0, image_url: '', description: '' });
+            setImageFile(null);
+            fetchProducts();
+        } else {
+            toast({ title: 'Error al crear', description: insertError.message, variant: 'destructive' });
+        }
+    };
+
+    // Handler para cambio de imagen en creación
+    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setImageFile(file);
+            setImageError(null);
+        }
+    };
+
+    // Handler para eliminar producto
+    const handleDeleteProduct = async (product: Product) => {
+        const { error } = await supabase.from('products').delete().eq('id', product.id);
+        if (!error) {
+            toast({ title: 'Producto eliminado' });
+            fetchProducts();
+        } else {
+            toast({ title: 'Error al eliminar', description: error.message, variant: 'destructive' });
+        }
+    };
+    // --- CRUD Productos ---
+    // Estado para modal de creación
+    const [showCreateProductModal, setShowCreateProductModal] = useState(false);
+    // Estado para nuevo producto
+    const [newProduct, setNewProduct] = useState({
+        name: '',
+        category: '',
+        stock: 1,
+        stock_minimo: 0,
+        price: 0,
+        image_url: '',
+        description: ''
+    });
+    const [nameError, setNameError] = useState<string | null>(null);
+    const [imageError, setImageError] = useState<string | null>(null);
+    const [imageFile, setImageFile] = useState<File | null>(null);
+
+    // Estado para edición de producto
+    const [editProduct, setEditProduct] = useState<any | null>(null);
+    const [editNameError, setEditNameError] = useState<string | null>(null);
+    const [editImageError, setEditImageError] = useState<string | null>(null);
+    const [editImageFile, setEditImageFile] = useState<File | null>(null);
+
+    // Handler para abrir modal de edición
+    const handleEditProduct = (product: any) => {
+        setEditProduct(product);
+        setEditNameError(null);
+        setEditImageError(null);
+        setEditImageFile(null);
+    };
+
+    // Handler para cambio de imagen en edición
+    const handleEditImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setEditImageFile(file);
+            setEditImageError(null);
+        }
+    };
+
+    // Handler para actualizar producto
+    const handleUpdateProduct = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editProduct) return;
+        // Validar nombre único
+        const nameExists = products.some(p => p.name === editProduct.name && p.id !== editProduct.id);
+        if (nameExists) {
+            setEditNameError('Ya existe un producto con ese nombre');
+            return;
+        }
+        setEditNameError(null);
+        // Si hay imagen nueva, subirla al bucket 'product-images'
+        let imageUrl = editProduct.image_url;
+        if (editImageFile) {
+            // Obtener extensión del archivo
+            const ext = editImageFile.name.split('.').pop();
+            const fileName = `product-${editProduct.id}-${Date.now()}.${ext}`;
+            const { data, error } = await supabase.storage.from('product-images').upload(fileName, editImageFile, { upsert: true });
+            if (error) {
+                setEditImageError('Error al subir la imagen');
+                return;
+            }
+            imageUrl = supabase.storage.from('product-images').getPublicUrl(fileName).data.publicUrl;
+        }
+        // Actualizar en Supabase
+        const { error: updateError } = await supabase.from('products').update({
+            name: editProduct.name,
+            category: editProduct.category,
+            stock: editProduct.stock,
+            stock_minimo: editProduct.stock_minimo,
+            price: editProduct.price,
+            image_url: imageUrl,
+            description: editProduct.description
+        }).eq('id', editProduct.id);
+        if (!updateError) {
+            toast({ title: 'Producto actualizado' });
+            setEditProduct(null);
+            fetchProducts();
+        } else {
+            toast({ title: 'Error al actualizar', description: updateError.message, variant: 'destructive' });
+        }
+    };
     // Inventario
     const [products, setProducts] = useState<Product[]>([]);
     const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
@@ -91,48 +251,104 @@ const Admin = () => {
     const [movementQty, setMovementQty] = useState<string>('1');
     const [qtyError, setQtyError] = useState<string | null>(null);
     const [alertStock, setAlertStock] = useState<string | null>(null);
-        // Simulación de productos (reemplaza por fetch a Supabase en producción)
-        useEffect(() => {
-            setProducts([
-                { id: 1, name: 'Camiseta Urban Turquoise', stock: 10, stock_minimo: 3 },
-                { id: 2, name: 'Hoodie Coral Vibes', stock: 5, stock_minimo: 2 },
-                { id: 3, name: 'Jeans Black Edition', stock: 8, stock_minimo: 4 },
-            ]);
-        }, []);
+    // Consulta real de productos desde Supabase
+    const fetchProducts = async () => {
+        const { data, error } = await supabase.from('products').select('*');
+        if (!error && data) {
+            setProducts(data);
+        } else {
+            toast({ title: 'Error al cargar productos', description: error?.message, variant: 'destructive' });
+        }
+    };
 
-        // Actualizar inventario y registrar movimiento
-        const handleInventoryMovement = () => {
-            if (!selectedProductId) return toast({ title: 'Selecciona un producto' });
-            const prod = products.find(p => p.id === selectedProductId);
-            if (!prod) return toast({ title: 'Producto no encontrado' });
-            const qtyNum = Number(movementQty);
-            if (!movementQty || isNaN(qtyNum) || qtyNum < 1) {
-                setQtyError('La cantidad debe ser un número mayor a 0');
-                return;
-            }
-            setQtyError(null);
-            let newStock = prod.stock;
-            if (movementType === 'venta') newStock -= qtyNum;
-            if (movementType === 'devolucion' || movementType === 'reposicion') newStock += qtyNum;
-            if (newStock < 0) return toast({ title: 'No se permiten cantidades negativas en inventario', variant: 'destructive' });
-            // Actualiza producto
-            setProducts(products.map(p => p.id === prod.id ? { ...p, stock: newStock } : p));
-            // Registra movimiento
-            setInventoryMovements([...inventoryMovements, {
-                id: inventoryMovements.length + 1,
-                product_id: prod.id,
-                tipo: movementType,
-                cantidad: qtyNum,
-                fecha: new Date().toISOString(),
-            }]);
-            toast({ title: 'Inventario actualizado', description: `Nuevo stock: ${newStock}` });
-            // Alerta de stock bajo
-            if (newStock < prod.stock_minimo) {
-                setAlertStock(`¡Stock bajo para ${prod.name}! (${newStock} unidades, mínimo ${prod.stock_minimo})`);
-            } else {
-                setAlertStock(null);
-            }
-        };
+
+    // Actualizar inventario y registrar movimiento
+    const handleInventoryMovement = async () => {
+    if (!selectedProductId) return toast({ title: 'Selecciona un producto' });
+    const prod = products.find(p => p.id === selectedProductId);
+    if (!prod) return toast({ title: 'Producto no encontrado' });
+    const qtyNum = Number(movementQty);
+    if (!movementQty || isNaN(qtyNum) || qtyNum < 1) {
+        setQtyError('La cantidad debe ser un número mayor a 0');
+        return;
+    }
+    setQtyError(null);
+    let newStock = prod.stock;
+    if (movementType === 'venta') newStock -= qtyNum;
+    if (movementType === 'devolucion' || movementType === 'reposicion') newStock += qtyNum;
+    if (newStock < 0) return toast({ title: 'No se permiten cantidades negativas en inventario', variant: 'destructive' });
+
+    // Actualiza el stock en la tabla products
+    const { error: updateError } = await supabase
+        .from('products')
+        .update({ stock: newStock })
+        .eq('id', prod.id);
+    if (updateError) {
+        toast({ title: 'Error al actualizar stock', description: updateError.message, variant: 'destructive' });
+        return;
+    }
+
+    // Registra el movimiento en la tabla inventory_movements
+    const { error: movementError } = await supabase
+        .from('inventory_movements')
+        .insert({
+            product_id: prod.id,
+            tipo: movementType,
+            cantidad: qtyNum,
+            fecha: new Date().toISOString(),
+        });
+    if (movementError) {
+        toast({ title: 'Error al registrar movimiento', description: movementError.message, variant: 'destructive' });
+        return;
+    }
+
+    // Obtener el nombre del usuario actual (ajusta según tu lógica de autenticación)
+    const usuario_nombre = userData.find(u => u.auth_id === supabase.auth.getUser()?.data?.user?.id)?.full_name || 'Desconocido';
+
+    // Registrar en historial
+    const { error: historyError } = await supabase
+        .from('inventory_history')
+        .insert({
+            product_id: prod.id,
+            product_name: prod.name,
+            tipo: movementType,
+            cantidad: qtyNum,
+            fecha: new Date().toISOString(),
+            usuario_nombre
+        });
+    if (historyError) {
+        toast({ title: 'Error al registrar historial', description: historyError.message, variant: 'destructive' });
+        return;
+    }
+
+    toast({ title: 'Inventario actualizado', description: `Nuevo stock: ${newStock}` });
+    if (newStock < prod.stock_minimo) {
+        setAlertStock(`¡Stock bajo para ${prod.name}! (${newStock} unidades, mínimo ${prod.stock_minimo})`);
+    } else {
+        setAlertStock(null);
+    }
+};
+
+// Consulta de movimientos de inventario desde Supabase
+const fetchInventoryMovements = async () => {
+    const { data, error } = await supabase.from('inventory_movements').select('*');
+    if (!error && data) {
+        setInventoryMovements(data);
+    } else {
+        toast({ title: 'Error al cargar movimientos', description: error?.message, variant: 'destructive' });
+    }
+};
+
+//Consulta del historial de movimientos de inventario
+const [inventoryHistory, setInventoryHistory] = useState([]);
+const fetchInventoryHistory = async () => {
+    const { data, error } = await supabase.from('inventory_history').select('*');
+    if (!error && data) {
+        setInventoryHistory(data);
+    } else {
+        toast({ title: 'Error al cargar historial', description: error?.message, variant: 'destructive' });
+    }
+};
     const [viewOrder, setViewOrder] = useState<any | null>(null);
     const [editOrder, setEditOrder] = useState<any | null>(null);
     const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
@@ -165,7 +381,7 @@ const Admin = () => {
             }
         }
     };
-    
+
     // Fetch stats
     const fetchSiteStats = async () => {
         const { count: userCount } = await supabase.from("users").select("*", { count: "exact", head: true });
@@ -190,6 +406,9 @@ const Admin = () => {
         fetchUserData();
         fetchSiteStats();
         fetchOrdersData();
+        fetchInventoryHistory();
+        fetchInventoryMovements();
+        fetchProducts();
 
         // Suscripción en tiempo real a la tabla users
         const usersChannel = supabase
@@ -217,10 +436,48 @@ const Admin = () => {
             )
             .subscribe();
 
+        // Suscripción en tiempo real a la tabla inventory_movements
+        const inventoryChannel = supabase
+            .channel('inventory-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'inventory_movements' },
+                () => {
+                    fetchInventoryMovements();
+                }
+            )
+            .subscribe();
+        // Suscripción en tiempo real a la tabla inventory_history
+        const historyChannel = supabase
+            .channel('inventory-history-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'inventory_history' },
+                () => {
+                    fetchInventoryHistory();
+                }
+            )
+            .subscribe();
+
+        // Suscripción en tiempo real a la tabla products
+        const productsChannel = supabase
+            .channel('products-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'products' },
+                () => {
+                    fetchProducts();
+                }
+            )
+            .subscribe();
+
         // Limpieza al desmontar
         return () => {
             supabase.removeChannel(usersChannel);
             supabase.removeChannel(ordersChannel);
+            supabase.removeChannel(productsChannel);
+            supabase.removeChannel(inventoryChannel);
+            supabase.removeChannel(historyChannel);
         };
     }, []);
 
@@ -284,7 +541,7 @@ const Admin = () => {
                     </div>
 
                     <Tabs defaultValue={activeTab} value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-                        <TabsList className="grid grid-cols-4 w-full max-w-xl">
+                        <TabsList className="grid grid-cols-5 w-full max-w-xl">
                             <TabsTrigger value="users">
                                 <Users className="h-4 w-4 mr-2" />
                                 Usuarios
@@ -296,6 +553,10 @@ const Admin = () => {
                             <TabsTrigger value="inventory">
                                 <Package className="h-4 w-4 mr-2" />
                                 Inventario
+                            </TabsTrigger>
+                            <TabsTrigger value="products">
+                                <Package className="h-4 w-4 mr-2" />
+                                Productos
                             </TabsTrigger>
                             <TabsTrigger value="stats">
                                 <BarChart className="h-4 w-4 mr-2" />
@@ -572,123 +833,303 @@ const Admin = () => {
                         </TabsContent>
 
                         {/* Estadísticas */}
-                {/* Inventario */}
-                <TabsContent value="inventory" className="space-y-6">
-                                <Card className="glass border-white/20">
-                                    <CardHeader>
-                                        <CardTitle className="text-left">Gestión de Inventario</CardTitle>
-                                        <CardDescription className="text-left">Actualiza el stock y registra movimientos</CardDescription>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="flex flex-col md:flex-row gap-6 items-end mb-6 p-4 bg-card rounded-lg border border-white/20">
-                                            <div className="flex-1 min-w-[180px]">
-                                                <label className="block mb-2 font-semibold text-muted-foreground">Producto</label>
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="outline" className="w-full flex justify-between items-center px-2 py-1">
-                                                            <span>
-                                                                {selectedProductId
-                                                                    ? products.find(p => p.id === selectedProductId)?.name + ` (Stock: ${products.find(p => p.id === selectedProductId)?.stock})`
-                                                                    : 'Selecciona...'}
-                                                            </span>
-                                                            <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-full">
-                                                        {products.map(p => (
-                                                            <DropdownMenuItem key={p.id} onClick={() => setSelectedProductId(p.id)}>
-                                                                {p.name} (Stock: {p.stock})
-                                                            </DropdownMenuItem>
-                                                        ))}
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </div>
-                                            <div className="flex-1 min-w-[180px]">
-                                                <label className="block mb-2 font-semibold text-muted-foreground">Tipo de movimiento</label>
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="outline" className="w-full flex justify-between items-center px-2 py-1">
-                                                            <span>
-                                                                {movementType === 'venta' && 'Venta'}
-                                                                {movementType === 'devolucion' && 'Devolución'}
-                                                                {movementType === 'reposicion' && 'Reposición'}
-                                                            </span>
-                                                            <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent className="w-full">
-                                                        <DropdownMenuItem onClick={() => setMovementType('venta')}>Venta</DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => setMovementType('devolucion')}>Devolución</DropdownMenuItem>
-                                                        <DropdownMenuItem onClick={() => setMovementType('reposicion')}>Reposición</DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </div>
-                                            <div className="flex-1 min-w-[180px]">
-                                                <label className="block mb-2 font-semibold text-muted-foreground">Cantidad</label>
-                                                <input
-                                                    type="number"
-                                                    min={1}
-                                                    className={`border rounded px-2 py-1 w-full bg-background text-foreground ${qtyError ? 'border-destructive' : ''}`}
-                                                    value={movementQty}
-                                                    onChange={e => {
-                                                        const val = e.target.value;
-                                                        setMovementQty(val);
-                                                        const numVal = Number(val);
-                                                        if (!val || isNaN(numVal) || numVal < 1) {
-                                                            setQtyError('La cantidad debe ser un número mayor a 0');
-                                                        } else {
-                                                            setQtyError(null);
-                                                        }
-                                                    }}
-                                                />
-                                                {qtyError && <span className="text-destructive text-xs mt-1 block">{qtyError}</span>}
-                                            </div>
-                                            <Button className="bg-primary text-primary-foreground hover:bg-primary/80 transition" onClick={handleInventoryMovement}>Registrar movimiento</Button>
+                        {/* Inventario */}
+                        <TabsContent value="inventory" className="space-y-6">
+                            <Card className="glass border-white/20">
+                                <CardHeader>
+                                    <CardTitle className="text-left">Gestión de Inventario</CardTitle>
+                                    <CardDescription className="text-left">Actualiza el stock y registra movimientos</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="flex flex-col md:flex-row gap-6 items-end mb-6 p-4 bg-card rounded-lg border border-white/20">
+                                        <div className="flex-1 min-w-[180px]">
+                                            <label className="block mb-2 font-semibold text-muted-foreground">Producto</label>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="outline" className="w-full flex justify-between items-center px-2 py-1">
+                                                        <span>
+                                                            {selectedProductId
+                                                                ? products.find(p => p.id === selectedProductId)?.name + ` (Stock: ${products.find(p => p.id === selectedProductId)?.stock})`
+                                                                : 'Selecciona...'}
+                                                        </span>
+                                                        <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent className="w-full">
+                                                    {products.map(p => (
+                                                        <DropdownMenuItem key={p.id} onClick={() => setSelectedProductId(p.id)}>
+                                                            {p.name} (Stock: {p.stock})
+                                                        </DropdownMenuItem>
+                                                    ))}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </div>
-                                        {alertStock && <div className="mt-4 p-3 bg-destructive/20 text-destructive border border-destructive rounded-lg font-semibold shadow">{alertStock}</div>}
-                                        <div className="mt-8">
-                                            <h3 className="font-bold mb-2 text-muted-foreground">Historial de movimientos</h3>
-                                            <div className="relative">
-                                                <table className="min-w-full text-sm">
-                                                    <thead>
-                                                        <tr>
-                                                            <th className="px-2 py-1 text-left">Fecha</th>
-                                                            <th className="px-2 py-1 text-left">Producto</th>
-                                                            <th className="px-2 py-1 text-left">Tipo</th>
-                                                            <th className="px-2 py-1 text-left">Cantidad</th>
+                                        <div className="flex-1 min-w-[180px]">
+                                            <label className="block mb-2 font-semibold text-muted-foreground">Tipo de movimiento</label>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="outline" className="w-full flex justify-between items-center px-2 py-1">
+                                                        <span>
+                                                            {movementType === 'venta' && 'Venta'}
+                                                            {movementType === 'devolucion' && 'Devolución'}
+                                                            {movementType === 'reposicion' && 'Reposición'}
+                                                        </span>
+                                                        <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent className="w-full">
+                                                    <DropdownMenuItem onClick={() => setMovementType('venta')}>Venta</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => setMovementType('devolucion')}>Devolución</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => setMovementType('reposicion')}>Reposición</DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </div>
+                                        <div className="flex-1 min-w-[180px]">
+                                            <label className="block mb-2 font-semibold text-muted-foreground">Cantidad</label>
+                                            <input
+                                                type="number"
+                                                min={1}
+                                                className={`border rounded px-2 py-1 w-full bg-background text-foreground ${qtyError ? 'border-destructive' : ''}`}
+                                                value={movementQty}
+                                                onChange={e => {
+                                                    const val = e.target.value;
+                                                    setMovementQty(val);
+                                                    const numVal = Number(val);
+                                                    if (!val || isNaN(numVal) || numVal < 1) {
+                                                        setQtyError('La cantidad debe ser un número mayor a 0');
+                                                    } else {
+                                                        setQtyError(null);
+                                                    }
+                                                }}
+                                            />
+                                            {qtyError && <span className="text-destructive text-xs mt-1 block">{qtyError}</span>}
+                                        </div>
+                                        <Button className="bg-primary text-primary-foreground hover:bg-primary/80 transition" onClick={handleInventoryMovement}>Registrar movimiento</Button>
+                                    </div>
+                                    {alertStock && <div className="mt-4 p-3 bg-destructive/20 text-destructive border border-destructive rounded-lg font-semibold shadow">{alertStock}</div>}
+                                    <div className="mt-8">
+                                        <h3 className="font-bold mb-2 text-muted-foreground">Historial de movimientos</h3>
+                                        <div className="relative">
+                                            <table className="min-w-full text-sm">
+                                                <thead>
+                                                    <tr>
+                                                        <th className="px-2 py-1 text-left">Fecha</th>
+                                                        <th className="px-2 py-1 text-left">Producto</th>
+                                                        <th className="px-2 py-1 text-left">Tipo</th>
+                                                        <th className="px-2 py-1 text-left">Cantidad</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {inventoryHistory.map(hist => (
+                                                        <tr key={hist.id}>
+                                                            <td className="px-2 py-1">{new Date(hist.fecha).toLocaleString()}</td>
+                                                            <td className="px-2 py-1">{hist.product_name}</td>
+                                                            <td className="px-2 py-1">{hist.tipo}</td>
+                                                            <td className="px-2 py-1">{hist.cantidad}</td>
                                                         </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        {paginatedMovements.map(mov => {
-                                                            const prod = products.find(p => p.id === mov.product_id);
-                                                            return (
-                                                                <tr key={mov.id}>
-                                                                    <td className="px-2 py-1">{new Date(mov.fecha).toLocaleString()}</td>
-                                                                    <td className="px-2 py-1">{prod?.name}</td>
-                                                                    <td className="px-2 py-1">{mov.tipo}</td>
-                                                                    <td className="px-2 py-1">{mov.cantidad}</td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                    </tbody>
-                                                </table>
-                                                {/* Controles de paginación con posición fija */}
-                                                {totalMovementPages > 1 && (
-                                                    <div className="fixed left-0 right-0 bottom-0 flex justify-center items-center gap-2 p-4 bg-card border-t border-white/10 z-10" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
-                                                        <Button size="sm" variant="outline" disabled={movementPage === 1} onClick={() => setMovementPage(movementPage - 1)}>
-                                                            Anterior
-                                                        </Button>
-                                                        <span className="text-sm text-muted-foreground">Página {movementPage} de {totalMovementPages}</span>
-                                                        <Button size="sm" variant="outline" disabled={movementPage === totalMovementPages} onClick={() => setMovementPage(movementPage + 1)}>
-                                                            Siguiente
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                            </div>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                            {/* Controles de paginación con posición fija */}
+                                            {totalMovementPages > 1 && (
+                                                <div className="fixed left-0 right-0 bottom-0 flex justify-center items-center gap-2 p-4 bg-card border-t border-white/10 z-10" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
+                                                    <Button size="sm" variant="outline" disabled={movementPage === 1} onClick={() => setMovementPage(movementPage - 1)}>
+                                                        Anterior
+                                                    </Button>
+                                                    <span className="text-sm text-muted-foreground">Página {movementPage} de {totalMovementPages}</span>
+                                                    <Button size="sm" variant="outline" disabled={movementPage === totalMovementPages} onClick={() => setMovementPage(movementPage + 1)}>
+                                                        Siguiente
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
-                                    </CardContent>
-                                </Card>
-                </TabsContent>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+                        <TabsContent value="products" className="space-y-6">
+                            <Card className="glass border-white/20">
+                                <CardHeader>
+                                    <CardTitle>Gestión de Productos</CardTitle>
+                                    <CardDescription>Administra los productos, categorías y stock</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="flex justify-end mb-4">
+                                        <Button variant="default" size="sm" onClick={() => setShowCreateProductModal(true)}>
+                                            Nuevo producto
+                                        </Button>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full text-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th className="px-2 py-1 text-left">Imagen</th>
+                                                    <th className="px-2 py-1 text-left">Nombre</th>
+                                                    <th className="px-2 py-1 text-left">Categoría</th>
+                                                    <th className="px-2 py-1 text-left">Stock</th>
+                                                    <th className="px-2 py-1 text-left">Stock mínimo</th>
+                                                    <th className="px-2 py-1 text-left">Precio</th>
+                                                    <th className="px-2 py-1 text-left">Acciones</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {products.map(product => (
+                                                    <tr key={product.id}>
+                                                        <td className="px-2 py-1">
+                                                            {product.image_url ? (
+                                                                <img src={product.image_url} alt={product.name} className="h-12 w-12 object-cover rounded" />
+                                                            ) : (
+                                                                <span className="text-xs text-muted-foreground">Sin imagen</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-2 py-1 font-semibold">{product.name}</td>
+                                                        <td className="px-2 py-1">{product.category}</td>
+                                                        <td className="px-2 py-1">{product.stock}</td>
+                                                        <td className="px-2 py-1">{product.stock_minimo}</td>
+                                                        <td className="px-2 py-1">${product.price?.toFixed(2)}</td>
+                                                        <td className="px-2 py-1">
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <Button size="sm" variant="outline"><ChevronDown /></Button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent>
+                                                                    <DropdownMenuItem onClick={() => handleEditProduct(product)}>Editar</DropdownMenuItem>
+                                                                    <DropdownMenuSeparator />
+                                                                    <DropdownMenuItem onClick={() => handleDeleteProduct(product)} style={{ color: 'red' }}>Eliminar</DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {/* Modal crear producto */}
+                                    <Dialog open={showCreateProductModal} onOpenChange={setShowCreateProductModal}>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Nuevo Producto</DialogTitle>
+                                                <DialogDescription>Completa todos los campos para crear un producto.</DialogDescription>
+                                            </DialogHeader>
+                                            <form onSubmit={handleCreateProduct} className="space-y-4">
+                                                <div>
+                                                    <Label htmlFor="product-name">Nombre</Label>
+                                                    <Input id="product-name" type="text" value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} required />
+                                                    {nameError && <span className="text-destructive text-xs mt-1 block">{nameError}</span>}
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="product-category">Categoría</Label>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="outline" className="w-full flex justify-between items-center px-2 py-1">
+                                                                <span>{newProduct.category || 'Selecciona...'}</span>
+                                                                <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent className="w-full">
+                                                            {['Camisetas', 'Oversize', 'Hoddies', 'Pantalon'].map(cat => (
+                                                                <DropdownMenuItem key={cat} onClick={() => setNewProduct({ ...newProduct, category: cat })}>{cat}</DropdownMenuItem>
+                                                            ))}
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="product-stock">Stock</Label>
+                                                    <Input id="product-stock" type="number" min={1} value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: Number(e.target.value) })} required />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="product-stock-min">Stock mínimo</Label>
+                                                    <Input id="product-stock-min" type="number" min={0} value={newProduct.stock_minimo} onChange={e => setNewProduct({ ...newProduct, stock_minimo: Number(e.target.value) })} required />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="product-price">Precio</Label>
+                                                    <Input id="product-price" type="number" min={0.01} step={0.01} value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: Number(e.target.value) })} required />
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="product-image">Imagen</Label>
+                                                    <Input id="product-image" type="file" accept="image/*" onChange={handleImageChange} required />
+                                                    {imageError && <span className="text-destructive text-xs mt-1 block">{imageError}</span>}
+                                                </div>
+                                                <div>
+                                                    <Label htmlFor="product-description">Descripción</Label>
+                                                    <Input id="product-description" type="text" value={newProduct.description} onChange={e => setNewProduct({ ...newProduct, description: e.target.value })} required />
+                                                </div>
+                                                <DialogFooter className="flex gap-2 justify-end">
+                                                    <Button type="submit" size="sm" variant="default" onClick={handleCreateProduct}>Confirmar</Button>
+                                                    <DialogClose asChild>
+                                                        <Button type="button" size="sm" variant="outline" onClick={() => setShowCreateProductModal(false)}>Cancelar</Button>
+                                                    </DialogClose>
+                                                </DialogFooter>
+                                            </form>
+                                        </DialogContent>
+                                    </Dialog>
+                                    {/* Modal editar producto */}
+                                    <Dialog open={!!editProduct} onOpenChange={open => !open && setEditProduct(null)}>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Editar Producto</DialogTitle>
+                                                <DialogDescription>Modifica los datos del producto. La imagen es opcional.</DialogDescription>
+                                            </DialogHeader>
+                                            {editProduct && (
+                                                <form onSubmit={handleUpdateProduct} className="space-y-4">
+                                                    <div>
+                                                        <Label htmlFor="edit-product-name">Nombre</Label>
+                                                        <Input id="edit-product-name" type="text" value={editProduct.name} onChange={e => setEditProduct({ ...editProduct, name: e.target.value })} required />
+                                                        {editNameError && <span className="text-destructive text-xs mt-1 block">{editNameError}</span>}
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="edit-product-category">Categoría</Label>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button variant="outline" className="w-full flex justify-between items-center px-2 py-1">
+                                                                    <span>{editProduct.category || 'Selecciona...'}</span>
+                                                                    <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent className="w-full">
+                                                                {['Camisetas', 'Oversize', 'Hoddies', 'Pantalon'].map(cat => (
+                                                                    <DropdownMenuItem key={cat} onClick={() => setEditProduct({ ...editProduct, category: cat })}>{cat}</DropdownMenuItem>
+                                                                ))}
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="edit-product-stock">Stock</Label>
+                                                        <Input id="edit-product-stock" type="number" min={1} value={editProduct.stock} onChange={e => setEditProduct({ ...editProduct, stock: Number(e.target.value) })} required />
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="edit-product-stock-min">Stock mínimo</Label>
+                                                        <Input id="edit-product-stock-min" type="number" min={0} value={editProduct.stock_minimo} onChange={e => setEditProduct({ ...editProduct, stock_minimo: Number(e.target.value) })} required />
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="edit-product-price">Precio</Label>
+                                                        <Input id="edit-product-price" type="number" min={0.01} step={0.01} value={editProduct.price} onChange={e => setEditProduct({ ...editProduct, price: Number(e.target.value) })} required />
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="edit-product-image">Imagen (opcional)</Label>
+                                                        <Input id="edit-product-image" type="file" accept="image/*" onChange={handleEditImageChange} />
+                                                        {editImageError && <span className="text-destructive text-xs mt-1 block">{editImageError}</span>}
+                                                        {editProduct.image_url && (
+                                                            <img src={editProduct.image_url} alt={editProduct.name} className="h-12 w-12 object-cover rounded mt-2" />
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <Label htmlFor="edit-product-description">Descripción</Label>
+                                                        <Input id="edit-product-description" type="text" value={editProduct.description} onChange={e => setEditProduct({ ...editProduct, description: e.target.value })} required />
+                                                    </div>
+                                                    <DialogFooter className="flex gap-2 justify-end">
+                                                        <Button type="submit" size="sm" variant="default">Guardar cambios</Button>
+                                                        <DialogClose asChild>
+                                                            <Button type="button" size="sm" variant="outline" onClick={() => setEditProduct(null)}>Cancelar</Button>
+                                                        </DialogClose>
+                                                    </DialogFooter>
+                                                </form>
+                                            )}
+                                        </DialogContent>
+                                    </Dialog>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
                         <TabsContent value="stats" className="space-y-6">
                             <Card className="glass border-white/20">
                                 <CardHeader>
@@ -701,11 +1142,11 @@ const Admin = () => {
                                     <div className="flex flex-col gap-4">
                                         <ChartContainer config={{ users: { color: '#f97316', label: 'Usuarios' }, orders: { color: '#ef4444', label: 'Pedidos' } }}>
                                             <ResponsiveContainer width="50%" height={50}>
-                                                <ReBarChart data={[{ name: 'Usuarios', value: siteStats.totalUsers }, { name: 'Pedidos', value: siteStats.totalOrders }]}> 
+                                                <ReBarChart data={[{ name: 'Usuarios', value: siteStats.totalUsers }, { name: 'Pedidos', value: siteStats.totalOrders }]}>
                                                     <XAxis dataKey="name" />
                                                     <YAxis allowDecimals={false} />
                                                     <Tooltip content={() => null} />
-                                                    <Bar dataKey="value" fill="#f97316" radius={[8,8,0,0]} />
+                                                    <Bar dataKey="value" fill="#f97316" radius={[8, 8, 0, 0]} />
                                                 </ReBarChart>
                                             </ResponsiveContainer>
                                         </ChartContainer>

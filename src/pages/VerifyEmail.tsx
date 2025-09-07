@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Mail, ArrowLeft, Loader2 } from 'lucide-react';
-import { supabase } from '@/lib/supabase'; // Asegúrate de que esta ruta sea correcta
+import { supabase } from '@/lib/supabase';
 
 const VerifyEmail = () => {
   const [countdown, setCountdown] = useState(0);
