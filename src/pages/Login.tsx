@@ -20,7 +20,7 @@ const Login = () => {
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('id')
+        .select('auth_id')
         .eq('auth_id', userId)
         .maybeSingle();
 
@@ -42,19 +42,53 @@ const Login = () => {
       async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
           try {
-            // Verificar si el usuario tiene perfil completo en nuestra base de datos
-            const profileExists = await checkUserProfileExists(session.user.id);
-            
-            if (profileExists) {
-              // Usuario con perfil completo - redirigir a profile
+            // Verificar si el usuario existe en admins primero
+            const { data: adminData, error: adminError } = await supabase
+              .from('admins')
+              .select('auth_id')
+              .eq('auth_id', session.user.id)
+              .maybeSingle();
+
+            console.log('[LOGIN] session.user.id:', session.user.id, typeof session.user.id);
+            console.log('[LOGIN] Resultado consulta admins:', adminData, typeof adminData?.auth_id);
+            if (adminData) {
+              console.log('[LOGIN] Comparando:', adminData.auth_id, '===', session.user.id, adminData.auth_id === session.user.id);
+            }
+            if (adminError) {
+              console.error('[LOGIN] Error buscando usuario en admins:', adminError);
+            }
+
+            if (adminData && adminData.auth_id === session.user.id) {
+              console.log('[LOGIN] Usuario detectado como admin, redirigiendo a /admin');
+              navigate('/admin');
+              return;
+            } else {
+              console.log('[LOGIN] Usuario NO es admin, comprobando en users...');
+            }
+
+            // Si no es admin, verificar si existe en users
+            const { data: userData, error: userError } = await supabase
+              .from('users')
+              .select('auth_id')
+              .eq('auth_id', session.user.id)
+              .maybeSingle();
+
+            console.log('[LOGIN] Resultado consulta users:', userData);
+            if (userError) {
+              console.error('[LOGIN] Error buscando usuario en users:', userError);
+              navigate('/complete-profile');
+              return;
+            }
+
+            if (userData) {
+              console.log('[LOGIN] Usuario detectado como normal, redirigiendo a /profile');
               navigate('/profile');
             } else {
-              // Usuario sin perfil - redirigir a complete-profile
+              console.log('[LOGIN] Usuario sin perfil, redirigiendo a /complete-profile');
               navigate('/complete-profile');
             }
           } catch (error) {
             console.error('Error handling auth state change:', error);
-            // En caso de error, redirigir a complete-profile por seguridad
             navigate('/complete-profile');
           }
         }
@@ -121,7 +155,7 @@ const Login = () => {
         <Button
           variant="ghost"
           className="mb-6 text-muted-foreground hover:text-foreground"
-          onClick={() => window.history.back()}
+          onClick={() => navigate("/")}
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Volver

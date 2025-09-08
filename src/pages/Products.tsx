@@ -5,20 +5,20 @@ import ProductFilters from "@/components/ProductFilters";
 import ProductDetailModal from "@/components/ProductDetailModal";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
-import product1 from "@/assets/products/product-1.jpg";
-import product2 from "@/assets/products/product-2.jpg";
-import product3 from "@/assets/products/product-3.jpg";
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 interface Product {
   id: number;
   name: string;
   price: number;
   originalPrice?: number;
-  image: string;
+  image?: string;
+  image_url?: string;
   category: string;
   rating: number;
   isNew?: boolean;
-  sizes: string[];
+  sizes?: string[];
 }
 
 interface CartItem {
@@ -30,127 +30,6 @@ interface CartItem {
   quantity: number;
 }
 
-const allProducts: Product[] = [
-  {
-    id: 1,
-    name: "Camiseta Urban Turquoise",
-    price: 25000,
-    originalPrice: 35000,
-    image: product1,
-    category: "Camisetas",
-    rating: 4.8,
-    isNew: true,
-    sizes: ["S", "M", "L", "XL"],
-  },
-  {
-    id: 2,
-    name: "Hoodie Coral Vibes",
-    price: 75000,
-    image: product2,
-    category: "Hoodies",
-    rating: 4.9,
-    isNew: true,
-    sizes: ["M", "L", "XL", "XXL"],
-  },
-  {
-    id: 3,
-    name: "Jeans Black Edition",
-    price: 85000,
-    originalPrice: 100000,
-    image: product3,
-    category: "Pantalones",
-    rating: 4.7,
-    sizes: ["S", "M", "L", "XL"],
-  },
-  {
-    id: 4,
-    name: "Camiseta Street Style",
-    price: 30000,
-    image: product1,
-    category: "Camisetas",
-    rating: 4.6,
-    sizes: ["XS", "S", "M", "L"],
-  },
-  {
-    id: 5,
-    name: "Hoodie Oversized",
-    price: 80000,
-    image: product2,
-    category: "Hoodies",
-    rating: 4.8,
-    sizes: ["L", "XL", "XXL"],
-  },
-  {
-    id: 6,
-    name: "Jeans Slim Fit",
-    price: 70000,
-    originalPrice: 85000,
-    image: product3,
-    category: "Pantalones",
-    rating: 4.5,
-    sizes: ["S", "M", "L", "XL"],
-  },
-  {
-    id: 7,
-    name: "Camiseta Basic White",
-    price: 20000,
-    image: product1,
-    category: "Camisetas",
-    rating: 4.4,
-    sizes: ["XS", "S", "M", "L", "XL"],
-  },
-  {
-    id: 8,
-    name: "Hoodie Neon Green",
-    price: 90000,
-    originalPrice: 110000,
-    image: product2,
-    category: "Hoodies",
-    rating: 4.7,
-    isNew: true,
-    sizes: ["M", "L", "XL"],
-  },
-  {
-    id: 9,
-    name: "Jeans Ripped Style",
-    price: 95000,
-    image: product3,
-    category: "Pantalones",
-    rating: 4.6,
-    sizes: ["S", "M", "L"],
-  },
-  {
-    id: 10,
-    name: "Camiseta Graphic Tee",
-    price: 35000,
-    image: product1,
-    category: "Camisetas",
-    rating: 4.5,
-    isNew: true,
-    sizes: ["S", "M", "L", "XL", "XXL"],
-  },
-  {
-    id: 11,
-    name: "Hoodie Premium Cotton",
-    price: 120000,
-    originalPrice: 140000,
-    image: product2,
-    category: "Hoodies",
-    rating: 4.9,
-    sizes: ["M", "L", "XL"],
-  },
-  {
-    id: 12,
-    name: "Jeans Wide Leg",
-    price: 110000,
-    image: product3,
-    category: "Pantalones",
-    rating: 4.8,
-    isNew: true,
-    sizes: ["S", "M", "L", "XL"],
-  },
-];
-
 const Products = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -161,14 +40,29 @@ const Products = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const { toast } = useToast();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
 
-  const categories = ["all", ...Array.from(new Set(allProducts.map(p => p.category)))];
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoadingProducts(true);
+      const { data, error } = await supabase.from('products').select('*');
+      if (!error && data) {
+        setProducts(data);
+      } else {
+        toast({ title: 'Error al cargar productos', description: error?.message, variant: 'destructive' });
+      }
+      setLoadingProducts(false);
+    };
+    fetchProducts();
+  }, []);
 
-  const filteredProducts = allProducts.filter(product => {
+  const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
+
+  const filteredProducts = products.filter(product => {
     const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
-    const sizeMatch = selectedSizes.length === 0 || selectedSizes.some(size => product.sizes.includes(size));
-    
+    const sizeMatch = selectedSizes.length === 0 || (product.sizes && selectedSizes.some(size => product.sizes.includes(size)));
     return categoryMatch && priceMatch && sizeMatch;
   });
 
@@ -308,6 +202,7 @@ const Products = () => {
                     >
                       <ProductCard
                         {...product}
+                        image={product.image_url}
                         onAddToCart={handleAddToCart}
                         onClick={() => handleProductClick(product)}
                       />

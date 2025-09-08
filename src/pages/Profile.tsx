@@ -1,223 +1,163 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { User, Package, Heart, ShoppingBag, MapPin, Phone, Mail } from "lucide-react";
+import { User, Package, Heart } from "lucide-react";
 import Navbar from "@/components/Navbar";
-import { supabase } from '../lib/supabase';
+import { supabase } from "../lib/supabase";
 
 const Profile = () => {
-    const { toast } = useToast();
-    const [activeTab, setActiveTab] = useState("profile");
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("profile");
+  const [loading, setLoading] = useState(true);
+  const [profileData, setProfileData] = useState({
+  full_name: "Usuario",
+    email: "usuario@example.com",
+    phone: "",
+    address: ""
+  });
 
-    // Estados para el perfil
-    const [profileData, setProfileData] = useState({
-        name: "Usuario",
-        email: "usuario@example.com",
-        phone: "+57 300 123 4567",
-        address: "Calle Principal #123"
-    });
+  useEffect(() => {
+    const fetchUserData = async () => {
+      setLoading(true);
 
-    // Estado simulado para los pedidos
-    const orders = [
-        {
-            id: "ORD-001",
-            date: "2025-08-28",
-            status: "Entregado",
-            total: 150000,
-            items: [
-                { name: "Camiseta Urban Orange", quantity: 1, price: 25000 },
-                { name: "Hoodie Fire Edition", quantity: 1, price: 75000 }
-            ]
-        },
-        {
-            id: "ORD-002",
-            date: "2025-08-25",
-            status: "En proceso",
-            total: 85000,
-            items: [
-                { name: "Jeans Black Edition", quantity: 1, price: 85000 }
-            ]
-        }
-    ];
+      // 1. Obtener el usuario autenticado
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) {
+        console.error("Error obteniendo usuario auth:", authError);
+        setLoading(false);
+        return;
+      }
 
-    const handleUpdateProfile = (e: React.FormEvent) => {
-        e.preventDefault();
-        toast({
-            title: "Perfil actualizado",
-            description: "Los cambios han sido guardados correctamente",
-        });
+      const user = authData?.user;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // 2. Buscar los datos extendidos en la tabla `users`
+      const { data: dbUser, error: dbError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("auth_id", user.id)   // 👈 clave foránea
+        .maybeSingle();
+
+      if (dbError) {
+        console.error("Error obteniendo datos de users:", dbError);
+      }
+
+      // 3. Combinar info de auth y tabla users
+      setProfileData({
+  full_name: dbUser?.full_name || user.user_metadata?.full_name || "Usuario",
+        email: user.email || "usuario@example.com",
+        phone: dbUser?.phone || user.user_metadata?.phone || "",
+        address: dbUser?.address || ""
+      });
+
+      setLoading(false);
     };
 
-    return (
-        <div className="min-h-screen bg-background">
-            <Navbar cartItems={0} onCartClick={function (): void {
-                throw new Error("Function not implemented.");
-            } }/>
-            <main className="pt-24 px-4 sm:px-6 lg:px-8 pb-16">
-                <div className="max-w-7xl mx-auto">
-                    {/* Background decoration */}
-                    <div className="absolute inset-0 overflow-hidden -z-10">
-                        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 rounded-full blur-3xl"></div>
-                        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary/20 rounded-full blur-3xl"></div>
+    fetchUserData();
+  }, []);
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Actualizar en tu tabla users
+    const { error } = await supabase
+      .from("users")
+      .update({
+  full_name: profileData.full_name,
+        phone: profileData.phone,
+        address: profileData.address,
+      })
+      .eq("email", profileData.email);
+
+    if (error) {
+      console.error("Error actualizando perfil:", error);
+      toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" });
+    } else {
+      toast({ title: "Perfil actualizado", description: "Cambios guardados con éxito" });
+    }
+  };
+
+  if (loading) return <p className="text-center mt-20">Cargando perfil...</p>;
+
+  return (
+    <div className="w-[70vw] mx-auto">
+      <Navbar cartItems={0} onCartClick={() => {}} />
+      <main className="pt-24 px-4 sm:px-6 lg:px-8 pb-16">
+        <Tabs defaultValue={activeTab} className="space-y-8">
+          <TabsList className="grid grid-cols-3 w-full max-w-md">
+            <TabsTrigger value="profile" onClick={() => setActiveTab("profile")}>
+              <User className="h-4 w-4 mr-2" /> Mi Perfil
+            </TabsTrigger>
+            <TabsTrigger value="orders" onClick={() => setActiveTab("orders")}>
+              <Package className="h-4 w-4 mr-2" /> Pedidos
+            </TabsTrigger>
+            <TabsTrigger value="favorites" onClick={() => setActiveTab("favorites")}>
+              <Heart className="h-4 w-4 mr-2" /> Favoritos
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="profile">
+            <Card className="glass border-white/20">
+              <CardHeader>
+                <CardTitle>Información Personal</CardTitle>
+                <CardDescription>Actualiza tus datos personales y de contacto</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleUpdateProfile} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="full_name">Nombre completo</Label>
+                      <Input
+                        id="full_name"
+                        value={profileData.full_name}
+                        onChange={(e) =>
+                          setProfileData({ ...profileData, full_name: e.target.value })
+                        }
+                      />
                     </div>
-
-                    <div className="mb-8">
-                        <h1 className="text-4xl font-bold">
-                            <span className="gradient-text">Mi</span> Cuenta
-                        </h1>
-                        <p className="text-muted-foreground mt-2">
-                            Gestiona tu información personal y revisa tus pedidos
-                        </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Correo electrónico</Label>
+                      <Input id="email" type="email" value={profileData.email} disabled />
                     </div>
-
-                    <Tabs defaultValue={activeTab} className="space-y-8">
-                        <TabsList className="grid grid-cols-3 w-full max-w-md">
-                            <TabsTrigger value="profile" onClick={() => setActiveTab("profile")}>
-                                <User className="h-4 w-4 mr-2" />
-                                Mi Perfil
-                            </TabsTrigger>
-                            <TabsTrigger value="orders" onClick={() => setActiveTab("orders")}>
-                                <Package className="h-4 w-4 mr-2" />
-                                Pedidos
-                            </TabsTrigger>
-                            <TabsTrigger value="favorites" onClick={() => setActiveTab("favorites")}>
-                                <Heart className="h-4 w-4 mr-2" />
-                                Favoritos
-                            </TabsTrigger>
-                        </TabsList>
-
-                        <TabsContent value="profile" className="space-y-6">
-                            <Card className="glass border-white/20">
-                                <CardHeader>
-                                    <CardTitle>Información Personal</CardTitle>
-                                    <CardDescription>
-                                        Actualiza tus datos personales y de contacto
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <form onSubmit={handleUpdateProfile} className="space-y-6">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                            <div className="space-y-2">
-                                                <Label htmlFor="name">Nombre completo</Label>
-                                                <Input
-                                                    id="name"
-                                                    value={profileData.name}
-                                                    onChange={(e) => setProfileData({...profileData, name: e.target.value})}
-                                                    className="glass border-white/20"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="email">Correo electrónico</Label>
-                                                <Input
-                                                    id="email"
-                                                    type="email"
-                                                    value={profileData.email}
-                                                    onChange={(e) => setProfileData({...profileData, email: e.target.value})}
-                                                    className="glass border-white/20"
-                                                    disabled
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="phone">Teléfono</Label>
-                                                <Input
-                                                    id="phone"
-                                                    type="tel"
-                                                    value={profileData.phone}
-                                                    onChange={(e) => setProfileData({...profileData, phone: e.target.value})}
-                                                    className="glass border-white/20"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="address">Dirección</Label>
-                                                <Input
-                                                    id="address"
-                                                    value={profileData.address}
-                                                    onChange={(e) => setProfileData({...profileData, address: e.target.value})}
-                                                    className="glass border-white/20"
-                                                />
-                                            </div>
-                                        </div>
-                                        <Button type="submit" variant="hero">
-                                            Guardar Cambios
-                                        </Button>
-                                    </form>
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-
-                        <TabsContent value="orders">
-                            <div className="space-y-6">
-                                {orders.map((order) => (
-                                    <Card key={order.id} className="glass border-white/20">
-                                        <CardHeader>
-                                            <div className="flex justify-between items-center">
-                                                <div>
-                                                    <CardTitle className="flex items-center gap-2">
-                                                        <ShoppingBag className="h-5 w-5" />
-                                                        Pedido {order.id}
-                                                    </CardTitle>
-                                                    <CardDescription>{order.date}</CardDescription>
-                                                </div>
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent>
-                                            <div className="space-y-4">
-                                                {order.items.map((item, index) => (
-                                                    <div key={index} className="flex justify-between items-center">
-                                                        <div>
-                                                            <p className="font-medium">{item.name}</p>
-                                                            <p className="text-sm text-muted-foreground">
-                                                                Cantidad: {item.quantity}
-                                                            </p>
-                                                        </div>
-                                                        <p className="font-medium">
-                                                            ${item.price.toLocaleString()}
-                                                        </p>
-                                                    </div>
-                                                ))}
-                                                <div className="pt-4 border-t border-border">
-                                                    <div className="flex justify-between items-center">
-                                                        <p className="font-semibold">Total</p>
-                                                        <p className="font-semibold">
-                                                            ${order.total.toLocaleString()}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                            </div>
-                        </TabsContent>
-
-                        <TabsContent value="favorites">
-                            <Card className="glass border-white/20">
-                                <CardHeader>
-                                    <CardTitle>Mis Favoritos</CardTitle>
-                                    <CardDescription>
-                                        Productos que has marcado como favoritos
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {/* Aquí puedes integrar el componente FavoritesModal o crear una nueva vista de favoritos */}
-                                        {/* Por ahora mostraremos un mensaje */}
-                                        <p className="text-muted-foreground col-span-full text-center py-8">
-                                            Tus productos favoritos aparecerán aquí
-                                        </p>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </TabsContent>
-                    </Tabs>
-                </div>
-            </main>
-        </div>
-    );
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Teléfono</Label>
+                      <Input
+                        id="phone"
+                        value={profileData.phone}
+                        onChange={(e) =>
+                          setProfileData({ ...profileData, phone: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="address">Dirección</Label>
+                      <Input
+                        id="address"
+                        value={profileData.address}
+                        onChange={(e) =>
+                          setProfileData({ ...profileData, address: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <Button type="submit" variant="hero">
+                    Guardar Cambios
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+    </div>
+  );
 };
 
 export default Profile;

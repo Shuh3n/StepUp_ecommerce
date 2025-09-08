@@ -39,6 +39,7 @@ const Navbar = ({
 
   const UserMenu = () => {
     if (!isAuthenticated) {
+      // Solo mostrar el botón de login si NO está autenticado
       return (
         <Button 
           variant="ghost" 
@@ -50,7 +51,7 @@ const Navbar = ({
         </Button>
       );
     }
-
+    // Si está autenticado, mostrar el menú completo
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

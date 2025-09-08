@@ -17,6 +17,8 @@ import CompleteProfile from "./pages/CompleteProfile";
 import Profile from "./pages/Profile";
 import VerifyEmail from "./pages/VerifyEmail";
 import AuthCallback from "./pages/AuthCallback";
+import Admin from "./pages/Admin";
+import AdminRoute from "./components/AdminRoute";
 
 
 const queryClient = new QueryClient();
@@ -48,10 +50,7 @@ const App = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/auth-callback" element={<AuthCallback />} />
-
-  
             
             {/* Ruta específica para nuevos usuarios de Google */}
             <Route 
@@ -72,6 +71,15 @@ const App = () => {
                 </ProtectedRoute>
               } 
             />
+            <Route 
+              path="/admin"
+              element={
+                <AdminRoute>
+                  <Admin />
+                </AdminRoute>
+              }
+            />
+
 
             {/* Ruta catch-all */}
             <Route path="*" element={<NotFound />} />

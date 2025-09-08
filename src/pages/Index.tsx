@@ -25,56 +25,8 @@ interface CartItem {
   quantity: number;
 }
 
-const featuredProducts = [
-  {
-    id: 1,
-    name: "Camiseta Urban Orange",
-    price: 25000,
-    originalPrice: 35000,
-    image: product1,
-    category: "Camisetas",
-    rating: 4.8,
-    isNew: true,
-    description: "Camiseta de algodón premium con diseño urbano. Perfecta para un look casual y moderno.",
-    sizes: ["XS", "S", "M", "L", "XL"],
-    colors: ["Naranja", "Negro", "Blanco"],
-  },
-  {
-    id: 2,
-    name: "Hoodie Fire Edition",
-    price: 75000,
-    image: product2,
-    category: "Hoodies",
-    rating: 4.9,
-    isNew: true,
-    description: "Hoodie con capucha de alta calidad. Comodidad y estilo en una sola prenda.",
-    sizes: ["S", "M", "L", "XL", "XXL"],
-    colors: ["Rojo", "Negro", "Gris"],
-  },
-  {
-    id: 3,
-    name: "Jeans Black Edition",
-    price: 85000,
-    originalPrice: 100000,
-    image: product3,
-    category: "Pantalones",
-    rating: 4.7,
-    description: "Jeans de corte clásico con acabado premium. Durabilidad y comodidad garantizada.",
-    sizes: ["28", "30", "32", "34", "36", "38"],
-    colors: ["Negro", "Azul Oscuro"],
-  },
-  {
-    id: 4,
-    name: "Camiseta Street Style",
-    price: 30000,
-    image: product1,
-    category: "Camisetas",
-    rating: 4.6,
-    description: "Camiseta de diseño exclusivo con estampado street. Para quienes no necesitan permiso para pisar fuerte.",
-    sizes: ["XS", "S", "M", "L", "XL"],
-    colors: ["Blanco", "Negro", "Naranja"],
-  },
-];
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
 
 const Index = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -84,6 +36,22 @@ const Index = () => {
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
   const { toast } = useToast();
+  const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(true);
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoadingProducts(true);
+      const { data, error } = await supabase.from('products').select('*');
+      if (!error && data) {
+        setFeaturedProducts(data);
+      } else {
+        toast({ title: 'Error al cargar productos', description: error?.message, variant: 'destructive' });
+      }
+      setLoadingProducts(false);
+    };
+    fetchProducts();
+  }, []);
 
   const handleAddToCart = (product: any) => {
     setCartItems(prev => {
@@ -162,20 +130,27 @@ const Index = () => {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-              {featuredProducts.map((product, index) => (
-                <div
-                  key={product.id}
-                  className="animate-fade-in-up"
-                  style={{ animationDelay: `${index * 0.1}s` }}
-                >
-                  <a href={`/producto/${product.id}`} className="block">
-                    <ProductCard
-                      {...product}
-                      onAddToCart={handleAddToCart}
-                    />
-                  </a>
-                </div>
-              ))}
+              {loadingProducts ? (
+                <div className="col-span-4 text-center py-8 text-muted-foreground">Cargando productos...</div>
+              ) : featuredProducts.length === 0 ? (
+                <div className="col-span-4 text-center py-8 text-muted-foreground">No hay productos disponibles.</div>
+              ) : (
+                featuredProducts.map((product, index) => (
+                  <div
+                    key={product.id}
+                    className="animate-fade-in-up"
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
+                    <a href={`/producto/${product.id}`} className="block">
+                      <ProductCard
+                        {...product}
+                        image={product.image_url}
+                        onAddToCart={handleAddToCart}
+                      />
+                    </a>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className="text-center">

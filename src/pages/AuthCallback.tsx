@@ -28,7 +28,7 @@ const AuthCallback = () => {
         // Verificar si el usuario existe en nuestra tabla 'users'
         const { data: userData, error: userError } = await supabase
           .from('users')
-          .select('id, phone, identification')
+          .select('auth_id, phone, identification')
           .eq('auth_id', session.user.id)
           .maybeSingle();
 
@@ -57,11 +57,29 @@ const AuthCallback = () => {
             navigate('/complete-profile', { replace: true });
           }
         } else {
-          // Usuario NO EXISTE en nuestra BD - redirigir a completar perfil
-          toast({
-            title: '¡Bienvenido!',
-            description: 'Completa tu perfil para comenzar.',
-          });
+          // Usuario NO EXISTE en nuestra BD - crear registro básico y redirigir a completar perfil
+          const { user } = session;
+          const { id, email, user_metadata } = user;
+          const full_name = user_metadata?.full_name || user_metadata?.name || '';
+          const provider = user.app_metadata?.provider || '';
+
+          const { error: insertError } = await supabase
+            .from('users')
+            .insert({
+              auth_id: id,
+              email,
+              full_name,
+              provider,
+              created_at: new Date().toISOString(),
+            });
+          if (insertError) {
+            console.error('Error creando usuario en users:', insertError);
+          } else {
+            toast({
+              title: '¡Perfil creado!',
+              description: 'Tu perfil básico ha sido creado. Completa tu información.',
+            });
+          }
           navigate('/complete-profile', { replace: true });
         }
 
