@@ -8,7 +8,8 @@ interface ProductCardProps {
   name: string;
   price: number;
   originalPrice?: number;
-  image: string;
+  image?: string;
+  image_url?: string;
   category: string;
   rating: number;
   isNew?: boolean;
@@ -22,6 +23,7 @@ const ProductCard = ({
   price,
   originalPrice,
   image,
+  image_url,
   category,
   rating,
   isNew,
@@ -76,7 +78,7 @@ const ProductCard = ({
         onClick={onClick}
       >
         <img
-          src={image}
+          src={image_url || image}
           alt={name}
           className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
         />

@@ -12,7 +12,8 @@ interface ProductDetailModalProps {
     name: string;
     price: number;
     originalPrice?: number;
-    image: string;
+    image?: string;
+    image_url?: string;
     category: string;
     rating: number;
     isNew?: boolean;
@@ -66,7 +67,7 @@ const ProductDetailModal = ({ isOpen, onClose, product, onAddToCart }: ProductDe
             {/* Product Image */}
             <div className="relative aspect-square lg:aspect-auto">
               <img
-                src={product.image}
+                src={product.image_url || product.image || ""}
                 alt={product.name}
                 className="w-full h-full object-cover"
               />
