@@ -212,7 +212,7 @@ const Admin = () => {
         // Si hay imagen nueva, subirla al bucket 'product-images'
         let imageUrl = editProduct.image_url;
         if (editImageFile) {
-            // Obtener extensión del archivo
+            // Obtener extensión del archivo de imagen
             const ext = editImageFile.name.split('.').pop();
             const fileName = `product-${editProduct.id}-${Date.now()}.${ext}`;
             const { data, error } = await supabase.storage.from('product-images').upload(fileName, editImageFile, { upsert: true });
