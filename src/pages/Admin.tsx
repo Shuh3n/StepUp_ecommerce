@@ -15,9 +15,11 @@ interface Product {
 interface InventoryMovement {
     id: number;
     product_id: number;
+    product_name: string;
     tipo: 'venta' | 'devolucion' | 'reposicion';
     cantidad: number;
     fecha: string;
+    products?: { name: string };
 }
 import { toast } from '@/hooks/use-toast';
 import {
@@ -264,91 +266,82 @@ const Admin = () => {
 
     // Actualizar inventario y registrar movimiento
     const handleInventoryMovement = async () => {
-    if (!selectedProductId) return toast({ title: 'Selecciona un producto' });
-    const prod = products.find(p => p.id === selectedProductId);
-    if (!prod) return toast({ title: 'Producto no encontrado' });
-    const qtyNum = Number(movementQty);
-    if (!movementQty || isNaN(qtyNum) || qtyNum < 1) {
-        setQtyError('La cantidad debe ser un número mayor a 0');
-        return;
-    }
-    setQtyError(null);
-    let newStock = prod.stock;
-    if (movementType === 'venta') newStock -= qtyNum;
-    if (movementType === 'devolucion' || movementType === 'reposicion') newStock += qtyNum;
-    if (newStock < 0) return toast({ title: 'No se permiten cantidades negativas en inventario', variant: 'destructive' });
+        if (!selectedProductId) return toast({ title: 'Selecciona un producto' });
+        const prod = products.find(p => p.id === selectedProductId);
+        if (!prod) return toast({ title: 'Producto no encontrado' });
+        const qtyNum = Number(movementQty);
+        if (!movementQty || isNaN(qtyNum) || qtyNum < 1) {
+            setQtyError('La cantidad debe ser un número mayor a 0');
+            return;
+        }
+        setQtyError(null);
+        let newStock = prod.stock;
+        if (movementType === 'venta') newStock -= qtyNum;
+        if (movementType === 'devolucion' || movementType === 'reposicion') newStock += qtyNum;
+        if (newStock < 0) return toast({ title: 'No se permiten cantidades negativas en inventario', variant: 'destructive' });
 
-    // Actualiza el stock en la tabla products
-    const { error: updateError } = await supabase
-        .from('products')
-        .update({ stock: newStock })
-        .eq('id', prod.id);
-    if (updateError) {
-        toast({ title: 'Error al actualizar stock', description: updateError.message, variant: 'destructive' });
-        return;
-    }
+        // Actualiza el stock en la tabla products
+        const { error: updateError } = await supabase
+            .from('products')
+            .update({ stock: newStock })
+            .eq('id', prod.id);
+        if (updateError) {
+            toast({ title: 'Error al actualizar stock', description: updateError.message, variant: 'destructive' });
+            return;
+        }
 
-    // Registra el movimiento en la tabla inventory_movements
-    const { error: movementError } = await supabase
-        .from('inventory_movements')
-        .insert({
-            product_id: prod.id,
-            tipo: movementType,
-            cantidad: qtyNum,
-            fecha: new Date().toISOString(),
-        });
-    if (movementError) {
-        toast({ title: 'Error al registrar movimiento', description: movementError.message, variant: 'destructive' });
-        return;
-    }
+    // ...existing code...
 
-    // Obtener el nombre del usuario actual (ajusta según tu lógica de autenticación)
-    const usuario_nombre = userData.find(u => u.auth_id === supabase.auth.getUser()?.data?.user?.id)?.full_name || 'Desconocido';
+        // Obtener el nombre del usuario actual (ajusta según tu lógica de autenticación)
+        const usuario_nombre = userData.find(u => u.auth_id === supabase.auth.getUser()?.data?.user?.id)?.full_name || 'Desconocido';
 
-    // Registrar en historial
-    const { error: historyError } = await supabase
-        .from('inventory_history')
-        .insert({
-            product_id: prod.id,
-            product_name: prod.name,
-            tipo: movementType,
-            cantidad: qtyNum,
-            fecha: new Date().toISOString(),
-            usuario_nombre
-        });
-    if (historyError) {
-        toast({ title: 'Error al registrar historial', description: historyError.message, variant: 'destructive' });
-        return;
-    }
+        // Registrar en historial
+        const { error: historyError } = await supabase
+            .from('inventory_history')
+            .insert({
+                product_id: prod.id,
+                product_name: prod.name,
+                tipo: movementType,
+                cantidad: qtyNum,
+                fecha: new Date().toISOString(),
+                usuario_nombre
+            });
+        if (historyError) {
+            toast({ title: 'Error al registrar historial', description: historyError.message, variant: 'destructive' });
+            return;
+        }
 
-    toast({ title: 'Inventario actualizado', description: `Nuevo stock: ${newStock}` });
-    if (newStock < prod.stock_minimo) {
-        setAlertStock(`¡Stock bajo para ${prod.name}! (${newStock} unidades, mínimo ${prod.stock_minimo})`);
-    } else {
-        setAlertStock(null);
-    }
-};
+        toast({ title: 'Inventario actualizado', description: `Nuevo stock: ${newStock}` });
+        if (newStock < prod.stock_minimo) {
+            setAlertStock(`¡Stock bajo para ${prod.name}! (${newStock} unidades, mínimo ${prod.stock_minimo})`);
+        } else {
+            setAlertStock(null);
+        }
+    };
 
-// Consulta de movimientos de inventario desde Supabase
-const fetchInventoryMovements = async () => {
-    const { data, error } = await supabase.from('inventory_movements').select('*');
-    if (!error && data) {
-        setInventoryMovements(data);
-    } else {
-        toast({ title: 'Error al cargar movimientos', description: error?.message, variant: 'destructive' });
-    }
-};
+    // Consulta de movimientos de inventario desde Supabase
+    // Consulta de historial de inventario desde Supabase
+    const fetchInventoryMovements = async () => {
+        const { data, error } = await supabase
+            .from('inventory_history')
+            .select('*');
+        if (!error && data) {
+            setInventoryMovements(data);
+        } else {
+            toast({ title: 'Error al cargar historial', description: error?.message, variant: 'destructive' });
+        }
+    };
 
-//Consulta del historial de movimientos de inventario
-const [inventoryHistory, setInventoryHistory] = useState([]);
-const fetchInventoryHistory = async () => {
-    const { data, error } = await supabase.from('inventory_history').select('*');
-    if (!error && data) {
-        setInventoryHistory(data);
-    } else {
-        toast({ title: 'Error al cargar historial', description: error?.message, variant: 'destructive' });
-    }
-};
+    //Consulta del historial de movimientos de inventario
+    const [inventoryHistory, setInventoryHistory] = useState([]);
+    const fetchInventoryHistory = async () => {
+        const { data, error } = await supabase.from('inventory_history').select('*');
+        if (!error && data) {
+            setInventoryHistory(data);
+        } else {
+            toast({ title: 'Error al cargar historial', description: error?.message, variant: 'destructive' });
+        }
+    };
     const [viewOrder, setViewOrder] = useState<any | null>(null);
     const [editOrder, setEditOrder] = useState<any | null>(null);
     const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
@@ -454,7 +447,7 @@ const fetchInventoryHistory = async () => {
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'inventory_history' },
                 () => {
-                    fetchInventoryHistory();
+                    fetchInventoryMovements(); // Actualiza la tabla principal de historial
                 }
             )
             .subscribe();
@@ -525,6 +518,17 @@ const fetchInventoryHistory = async () => {
             toast({ title: "Error al eliminar pedido", description: error.message, variant: "destructive" });
         }
     };
+
+    // Estados de paginación
+    const [ordersPage, setOrdersPage] = useState(1);
+    const ordersPerPage = 10;
+    const totalOrdersPages = Math.ceil(ordersData.length / ordersPerPage);
+    const paginatedOrders = ordersData.slice((ordersPage - 1) * ordersPerPage, ordersPage * ordersPerPage);
+
+    const [productsPage, setProductsPage] = useState(1);
+    const productsPerPage = 10;
+    const totalProductsPages = Math.ceil(products.length / productsPerPage);
+    const paginatedProducts = products.slice((productsPage - 1) * productsPerPage, productsPage * productsPerPage);
 
     return (
         <div className="min-h-screen bg-background">
@@ -711,7 +715,7 @@ const fetchInventoryHistory = async () => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {ordersData.map((order) => {
+                                                {paginatedOrders.map((order) => {
                                                     const user = userData.find(u => u.auth_id === order.user_id);
                                                     return (
                                                         <tr key={order.id}>
@@ -828,6 +832,18 @@ const fetchInventoryHistory = async () => {
                                             </tbody>
                                         </table>
                                     </div>
+                                    {/* Controles de paginación pedidos */}
+                                    {totalOrdersPages > 1 && (
+                                        <div className="flex justify-center items-center gap-2 p-4">
+                                            <Button size="sm" variant="outline" disabled={ordersPage === 1} onClick={() => setOrdersPage(ordersPage - 1)}>
+                                                Anterior
+                                            </Button>
+                                            <span className="text-sm text-muted-foreground">Página {ordersPage} de {totalOrdersPages}</span>
+                                            <Button size="sm" variant="outline" disabled={ordersPage === totalOrdersPages} onClick={() => setOrdersPage(ordersPage + 1)}>
+                                                Siguiente
+                                            </Button>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </TabsContent>
@@ -920,7 +936,7 @@ const fetchInventoryHistory = async () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {inventoryHistory.map(hist => (
+                                                    {paginatedMovements.map(hist => (
                                                         <tr key={hist.id}>
                                                             <td className="px-2 py-1">{new Date(hist.fecha).toLocaleString()}</td>
                                                             <td className="px-2 py-1">{hist.product_name}</td>
@@ -973,7 +989,7 @@ const fetchInventoryHistory = async () => {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {products.map(product => (
+                                                {paginatedProducts.map(product => (
                                                     <tr key={product.id}>
                                                         <td className="px-2 py-1">
                                                             {product.image_url ? (
