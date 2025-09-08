@@ -429,17 +429,7 @@ const Admin = () => {
             )
             .subscribe();
 
-        // Suscripción en tiempo real a la tabla inventory_movements
-        const inventoryChannel = supabase
-            .channel('inventory-changes')
-            .on(
-                'postgres_changes',
-                { event: '*', schema: 'public', table: 'inventory_movements' },
-                () => {
-                    fetchInventoryMovements();
-                }
-            )
-            .subscribe();
+    // ...existing code...
         // Suscripción en tiempo real a la tabla inventory_history
         const historyChannel = supabase
             .channel('inventory-history-changes')
@@ -469,7 +459,6 @@ const Admin = () => {
             supabase.removeChannel(usersChannel);
             supabase.removeChannel(ordersChannel);
             supabase.removeChannel(productsChannel);
-            supabase.removeChannel(inventoryChannel);
             supabase.removeChannel(historyChannel);
         };
     }, []);
