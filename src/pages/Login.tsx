@@ -167,7 +167,7 @@ const Login = () => {
               <h1 className="text-3xl font-bold gradient-text">Step Up</h1>
             </div>
             <div>
-              <CardTitle className="text-2xl">Iniciar Sesión</CardTitle>
+              <CardTitle className="text-2xl">Inicio Sesión</CardTitle>
               <CardDescription>
                 Ingresa a tu cuenta para continuar
               </CardDescription>

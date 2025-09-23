@@ -363,7 +363,7 @@ export default function Register() {
               <h1 className="text-3xl font-bold gradient-text">Step Up</h1>
             </div>
             <div>
-              <CardTitle className="text-2xl">Crear Cuenta</CardTitle>
+              <CardTitle className="text-2xl">Registro de cuenta</CardTitle>
               <CardDescription>
                 Únete a Step Up y encuentra tu estilo
               </CardDescription>
