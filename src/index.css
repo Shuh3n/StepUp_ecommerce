@@ -133,17 +133,20 @@ All colors MUST be HSL.
   }
 
   /* Accessibility Modes */
-  .text-only-mode img:not([alt]),
-  .text-only-mode .decorative-image {
-    @apply hidden;
+  .text-only-mode img:not([alt]):not(.no-hide),
+  .text-only-mode .decorative-image,
+  .text-only-mode [role="presentation"] {
+    @apply opacity-20 grayscale;
   }
 
   .high-contrast-mode {
-    @apply contrast-125 brightness-110;
+    filter: contrast(1.5) brightness(1.1);
   }
 
-  .high-contrast-mode * {
-    @apply border-2;
+  .high-contrast-mode button,
+  .high-contrast-mode a,
+  .high-contrast-mode [role="button"] {
+    @apply outline outline-2 outline-offset-2;
   }
 
   /* Floating animation */

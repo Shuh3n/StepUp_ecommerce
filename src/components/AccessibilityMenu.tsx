@@ -78,8 +78,10 @@ const AccessibilityMenu = () => {
   };
 
   const handleOpen = () => {
+    setIsAnimating(false);
     setIsOpen(true);
-    setIsAnimating(true);
+    // Trigger animation after mount
+    setTimeout(() => setIsAnimating(true), 10);
   };
 
   const handleClose = () => {
@@ -87,13 +89,22 @@ const AccessibilityMenu = () => {
     setTimeout(() => setIsOpen(false), 300);
   };
 
+  const handleToggle = () => {
+    if (isOpen) {
+      handleClose();
+    } else {
+      handleOpen();
+    }
+  };
+
   const shortcuts = [
     { key: "Alt + A", description: "Abrir/Cerrar menú de accesibilidad" },
+    { key: "Alt + T", description: "Abrir/Cerrar menú de accesibilidad" },
     { key: "Alt + +", description: "Aumentar tamaño de letra" },
     { key: "Alt + -", description: "Disminuir tamaño de letra" },
     { key: "Alt + R", description: "Restablecer configuración" },
     { key: "Alt + C", description: "Alternar alto contraste" },
-    { key: "Alt + T", description: "Alternar modo solo texto" },
+    { key: "Alt + X", description: "Alternar modo solo texto" },
   ];
 
   // Keyboard shortcuts
@@ -103,7 +114,11 @@ const AccessibilityMenu = () => {
         switch(e.key.toLowerCase()) {
           case 'a':
             e.preventDefault();
-            isOpen ? handleClose() : handleOpen();
+            handleToggle();
+            break;
+          case 't':
+            e.preventDefault();
+            handleToggle();
             break;
           case '+':
           case '=':
@@ -122,7 +137,7 @@ const AccessibilityMenu = () => {
             e.preventDefault();
             toggleHighContrast();
             break;
-          case 't':
+          case 'x':
             e.preventDefault();
             toggleTextOnly();
             break;
@@ -149,14 +164,6 @@ const AccessibilityMenu = () => {
       {/* Accessibility Menu */}
       {isOpen && (
         <>
-          {/* Backdrop */}
-          <div 
-            className={`fixed inset-0 bg-black/30 backdrop-blur-sm z-[99] transition-opacity duration-300 ${
-              isAnimating ? 'opacity-100' : 'opacity-0'
-            }`}
-            onClick={handleClose}
-          />
-          
           <Card className={`fixed bottom-24 right-6 z-[100] p-6 shadow-floating bg-card border-primary/20 w-96 transition-all duration-300 ${
             isAnimating ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'
           }`}>
@@ -229,7 +236,7 @@ const AccessibilityMenu = () => {
                   variant={textOnly ? "default" : "outline"}
                   size="sm"
                   onClick={toggleTextOnly}
-                  aria-label="Alternar modo solo texto (Alt + T)"
+                  aria-label="Alternar modo solo texto (Alt + X)"
                 >
                   {textOnly ? "Activado" : "Desactivado"}
                 </Button>
