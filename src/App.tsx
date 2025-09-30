@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { supabase } from './lib/supabase';
+import AccessibilityMenu from "@/components/AccessibilityMenu";
 import Index from "./pages/Index";
 import Products from "./pages/Products";
 import Login from "./pages/Login";
@@ -41,6 +42,7 @@ const App = () => {
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <AccessibilityMenu />
           <BrowserRouter>
           <Routes>
             {/* Rutas públicas */}

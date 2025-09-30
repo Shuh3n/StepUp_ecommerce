@@ -132,6 +132,20 @@ All colors MUST be HSL.
     @apply bg-white/10 backdrop-blur-lg border border-white/20;
   }
 
+  /* Accessibility Modes */
+  .text-only-mode img:not([alt]),
+  .text-only-mode .decorative-image {
+    @apply hidden;
+  }
+
+  .high-contrast-mode {
+    @apply contrast-125 brightness-110;
+  }
+
+  .high-contrast-mode * {
+    @apply border-2;
+  }
+
   /* Floating animation */
   .float {
     animation: float 3s ease-in-out infinite;

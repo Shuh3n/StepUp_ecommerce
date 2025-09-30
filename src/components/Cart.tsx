@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { X, Plus, Minus, ShoppingBag, Trash2 } from "lucide-react";
@@ -21,8 +21,20 @@ interface CartProps {
 }
 
 const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartProps) => {
+  const [isAnimating, setIsAnimating] = useState(false);
   const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsAnimating(true);
+    }
+  }, [isOpen]);
+
+  const handleClose = () => {
+    setIsAnimating(false);
+    setTimeout(() => onClose(), 300);
+  };
 
   if (!isOpen) return null;
 
@@ -30,12 +42,16 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
     <div className="fixed inset-0 z-50 flex">
       {/* Backdrop */}
       <div 
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={onClose}
+        className={`fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
+          isAnimating ? 'opacity-100' : 'opacity-0'
+        }`}
+        onClick={handleClose}
       />
       
       {/* Cart Panel */}
-      <div className="ml-auto w-full max-w-md h-full glass border-l border-white/20 flex flex-col animate-slide-in-right">
+      <div className={`ml-auto w-full max-w-md h-full glass border-l border-white/20 flex flex-col transition-transform duration-300 ${
+        isAnimating ? 'translate-x-0' : 'translate-x-full'
+      }`}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/20">
           <div className="flex items-center gap-3">
@@ -47,7 +63,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
               </Badge>
             )}
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <Button variant="ghost" size="icon" onClick={handleClose}>
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -61,7 +77,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
               <p className="text-muted-foreground mb-6">
                 Agrega algunos productos increíbles a tu carrito
               </p>
-              <Button variant="hero" onClick={onClose}>
+              <Button variant="hero" onClick={handleClose}>
                 Continuar Comprando
               </Button>
             </div>
@@ -143,7 +159,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
               <Button variant="hero" className="w-full" size="lg">
                 Proceder al Pago
               </Button>
-              <Button variant="ghost" className="w-full" onClick={onClose}>
+              <Button variant="ghost" className="w-full" onClick={handleClose}>
                 Continuar Comprando
               </Button>
             </div>
