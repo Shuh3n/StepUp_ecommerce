@@ -113,12 +113,13 @@ const AccessibilityMenu = () => {
       if (e.altKey) {
         switch(e.key.toLowerCase()) {
           case 'a':
-            e.preventDefault();
-            handleToggle();
-            break;
           case 't':
             e.preventDefault();
-            handleToggle();
+            if (isOpen) {
+              handleClose();
+            } else {
+              handleOpen();
+            }
             break;
           case '+':
           case '=':
@@ -153,7 +154,7 @@ const AccessibilityMenu = () => {
     <>
       {/* Floating Button */}
       <Button
-        onClick={handleOpen}
+        onClick={handleToggle}
         className="fixed bottom-6 right-6 z-[100] h-14 w-14 rounded-full bg-gradient-stepup shadow-floating hover:scale-110 transition-transform animate-fade-in"
         size="icon"
         aria-label="Abrir menú de accesibilidad (Alt + A)"

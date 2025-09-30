@@ -21,15 +21,15 @@ const Hero = () => {
 
       {/* Content */}
       <div className="relative z-10 text-center px-4 sm:px-6 lg:px-8 animate-fade-in-up">
-        <h1 className="text-5xl md:text-7xl font-bold mb-6 animate-fade-in" style={{ animationDelay: '0.2s' }}>
-          <span className="gradient-text">Step</span>
-          <br />
-          <span className="text-foreground">Up</span>
+        <h1 className="text-5xl md:text-7xl font-black mb-6 animate-fade-in" style={{ animationDelay: '0.2s' }}>
+          <span className="gradient-text font-black tracking-tight">STEP UP</span>
         </h1>
         
-        <p className="text-xl md:text-2xl text-muted-foreground mb-8 max-w-3xl mx-auto animate-fade-in" style={{ animationDelay: '0.4s' }}>
-          Eleva tu estilo con la moda juvenil más trendy. Descubre looks únicos que definen tu personalidad
-        </p>
+        <div className="inline-block bg-black/60 backdrop-blur-sm px-6 py-4 rounded-2xl border border-white/10 mb-8">
+          <p className="text-xl md:text-3xl font-bold text-white animate-fade-in shadow-lg" style={{ animationDelay: '0.4s', textShadow: '0 2px 10px rgba(0,0,0,0.8)' }}>
+            Eleva tu estilo con la moda juvenil más trendy
+          </p>
+        </div>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in" style={{ animationDelay: '0.6s' }}>
           <a href="/productos">

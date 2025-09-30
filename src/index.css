@@ -140,13 +140,13 @@ All colors MUST be HSL.
   }
 
   .high-contrast-mode {
-    filter: contrast(1.5) brightness(1.1);
+    filter: contrast(1.5) brightness(1.1) !important;
   }
 
-  .high-contrast-mode button,
-  .high-contrast-mode a,
-  .high-contrast-mode [role="button"] {
-    @apply outline outline-2 outline-offset-2;
+  .high-contrast-mode button:not(.no-outline),
+  .high-contrast-mode a:not(.no-outline) {
+    outline: 2px solid currentColor !important;
+    outline-offset: 2px !important;
   }
 
   /* Floating animation */
