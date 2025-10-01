@@ -21,7 +21,7 @@ interface Product {
   sizes?: string[];
 }
 
-interface CartItem {
+export interface CartItem {
   id: number;
   name: string;
   price: number;
@@ -39,6 +39,8 @@ const Products = () => {
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -140,9 +142,12 @@ const Products = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      // En tu componente Layout o padre
       <Navbar 
-        cartItems={totalItems} 
-        onCartClick={() => setIsCartOpen(true)} 
+        cartItems={totalItems}
+        onCartClick={() => setIsCartOpen(true)}
+        onContactClick={() => setIsContactModalOpen(true)}
+        onFavoritesClick={() => setIsFavoritesModalOpen(true)}
       />
       
       <main className="pt-20 px-4 sm:px-6 lg:px-8">
@@ -234,3 +239,4 @@ const Products = () => {
 };
 
 export default Products;
+

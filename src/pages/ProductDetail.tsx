@@ -134,9 +134,27 @@ const ProductDetail = () => {
     ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100) 
     : 0;
 
+  function setIsCartOpen(arg0: boolean): void {
+    throw new Error("Function not implemented.");
+  }
+
+  function setIsContactModalOpen(arg0: boolean): void {
+    throw new Error("Function not implemented.");
+  }
+
+  function setIsFavoritesModalOpen(arg0: boolean): void {
+    throw new Error("Function not implemented.");
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      <Navbar cartItems={0} onCartClick={() => {}} />
+      // En tu componente Layout o padre
+<Navbar 
+  cartItems={20}
+  onCartClick={() => setIsCartOpen(true)}
+  onContactClick={() => setIsContactModalOpen(true)}
+  onFavoritesClick={() => setIsFavoritesModalOpen(true)}
+/>
       
       <main className="pt-20 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">

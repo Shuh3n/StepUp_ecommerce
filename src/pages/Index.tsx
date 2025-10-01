@@ -1,20 +1,15 @@
-
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import ProductDetailModal from "@/components/ProductDetailModal";
-import ContactModal from "@/components/ContactModal";
-import FavoritesModal from "@/components/FavoritesModal";
-import AccessibilityMenu from "@/components/AccessibilityMenu";
-
 import Cart from "@/components/Cart";
 import ProductCard from "@/components/ProductCard";
 import { ArrowRight } from "lucide-react";
-import product1 from "@/assets/products/product-1.jpg";
-import product2 from "@/assets/products/product-2.jpg";
-import product3 from "@/assets/products/product-3.jpg";
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import AccessibilityMenu from "@/components/AccessibilityMenu";
 
 interface CartItem {
   id: number;
@@ -24,9 +19,6 @@ interface CartItem {
   category: string;
   quantity: number;
 }
-
-import { useEffect } from "react";
-import { supabase } from "@/lib/supabase";
 
 const Index = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -108,7 +100,7 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar 
-        cartItems={totalItems} 
+        cartItems={totalItems}
         onCartClick={() => setIsCartOpen(true)}
         onContactClick={() => setIsContactModalOpen(true)}
         onFavoritesClick={() => setIsFavoritesModalOpen(true)}
@@ -180,17 +172,6 @@ const Index = () => {
         isOpen={isProductModalOpen}
         onClose={() => setIsProductModalOpen(false)}
         product={selectedProduct}
-        onAddToCart={handleAddToCart}
-      />
-
-      <ContactModal
-        isOpen={isContactModalOpen}
-        onClose={() => setIsContactModalOpen(false)}
-      />
-
-      <FavoritesModal
-        isOpen={isFavoritesModalOpen}
-        onClose={() => setIsFavoritesModalOpen(false)}
         onAddToCart={handleAddToCart}
       />
 

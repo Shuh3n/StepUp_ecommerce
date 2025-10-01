@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { supabase } from './lib/supabase';
@@ -45,52 +45,52 @@ const App = () => {
           <Toaster />
           <Sonner />
           <AccessibilityMenu />
-          <BrowserRouter>
+          <Router>
           <Routes>
-            {/* Rutas públicas */}
-            <Route path="/" element={<Index />} />
-            <Route path="/productos" element={<Products />} />
-            <Route path="/producto/:id" element={<ProductDetail />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/auth-callback" element={<AuthCallback />} />
-            
-            {/* Ruta específica para nuevos usuarios de Google */}
-            <Route 
-              path="/complete-profile" 
-              element={
-                <ProtectedRoute requiresAuth requiresNewUser>
-                  <CompleteProfile />
-                </ProtectedRoute>
-              } 
-            />
+              {/* Rutas públicas */}
+              <Route path="/" element={<Index />} />
+              <Route path="/productos" element={<Products />} />
+              <Route path="/producto/:id" element={<ProductDetail />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
+              <Route path="/auth-callback" element={<AuthCallback />} />
+              
+              {/* Ruta específica para nuevos usuarios de Google */}
+              <Route 
+                path="/complete-profile" 
+                element={
+                  <ProtectedRoute requiresAuth requiresNewUser>
+                    <CompleteProfile />
+                  </ProtectedRoute>
+                } 
+              />
 
-            {/* Rutas protegidas que requieren autenticación */}
-            <Route 
-              path="/profile" 
-              element={
-                <ProtectedRoute>
-                  <Profile />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/admin"
-              element={
-                <AdminRoute>
-                  <Admin />
-                </AdminRoute>
-              }
-            />
+              {/* Rutas protegidas que requieren autenticación */}
+              <Route 
+                path="/profile" 
+                element={
+                  <ProtectedRoute>
+                    <Profile />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin"
+                element={
+                  <AdminRoute>
+                    <Admin />
+                  </AdminRoute>
+                }
+              />
 
 
-            {/* Ruta catch-all */}
-            <Route path="*" element={<NotFound />} />
+              {/* Ruta catch-all */}
+              <Route path="*" element={<NotFound />} />
           </Routes>
-        </BrowserRouter>
+        </Router>
         </TooltipProvider>
       </QueryClientProvider>
     </AuthProvider>
