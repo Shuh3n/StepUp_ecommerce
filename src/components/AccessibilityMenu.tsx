@@ -155,7 +155,7 @@ const AccessibilityMenu = () => {
       {/* Floating Button */}
       <Button
         onClick={handleToggle}
-        className="fixed bottom-6 right-6 z-[100] h-14 w-14 rounded-full bg-gradient-stepup shadow-floating hover:scale-110 transition-transform animate-fade-in"
+        className="fixed bottom-4 right-4 md:bottom-6 md:right-6 z-[100] h-14 w-14 rounded-full bg-gradient-stepup shadow-floating hover:scale-110 transition-transform animate-fade-in"
         size="icon"
         aria-label="Abrir menú de accesibilidad (Alt + A)"
       >
@@ -165,7 +165,7 @@ const AccessibilityMenu = () => {
       {/* Accessibility Menu */}
       {isOpen && (
         <>
-          <Card className={`fixed bottom-24 right-6 z-[100] p-6 shadow-floating bg-card border-primary/20 w-96 transition-all duration-300 ${
+          <Card className={`fixed bottom-24 left-1/2 -translate-x-1/2 md:left-auto md:right-6 md:translate-x-0 z-[100] p-6 shadow-floating bg-card border-primary/20 w-[calc(100vw-2rem)] md:w-96 max-w-[calc(100vw-2rem)] rounded-xl max-h-[70vh] overflow-y-auto transition-all duration-300 ${
             isAnimating ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'
           }`}>
             <div className="flex items-center justify-between mb-4">
