@@ -101,7 +101,7 @@ const ResetPassword = () => {
             </div>
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="px-8 pb-8">
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="password">Nueva contraseña</Label>

@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '../lib/supabase';
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -78,7 +78,7 @@ const ForgotPassword = () => {
             </div>
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="px-8 pb-8">
             {!emailSent ? (
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-2">
@@ -135,12 +135,12 @@ const ForgotPassword = () => {
               <div className="mt-6 text-center">
                 <p className="text-muted-foreground">
                   ¿Recordaste tu contraseña?{" "}
-                  <a
-                    href="/login"
+                  <Link
+                    to="/login"
                     className="text-primary hover:underline font-medium"
                   >
                     Inicia sesión aquí
-                  </a>
+                  </Link>
                 </p>
               </div>
             )}

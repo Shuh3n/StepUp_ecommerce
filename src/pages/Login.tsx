@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '../lib/supabase';
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -200,7 +200,7 @@ const Login = () => {
             </div>
           </div>
 
-          <CardContent>
+          <CardContent className="px-8 pb-8">
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="email">Correo electrónico</Label>
@@ -244,12 +244,12 @@ const Login = () => {
               </div>
 
               <div className="flex items-center justify-between">
-                <a
-                  href="/forgot-password"
+                <Link
+                  to="/forgot-password"
                   className="text-sm text-primary hover:underline"
                 >
                   ¿Olvidaste tu contraseña?
-                </a>
+                </Link>
               </div>
 
               <Button type="submit" variant="hero" className="w-full">
@@ -260,12 +260,12 @@ const Login = () => {
             <div className="mt-6 text-center">
               <p className="text-muted-foreground">
                 ¿No tienes cuenta?{" "}
-                <a
-                  href="/register"
+                <Link
+                  to="/register"
                   className="text-primary hover:underline font-medium"
                 >
                   Regístrate aquí
-                </a>
+                </Link>
               </p>
             </div>
           </CardContent>
