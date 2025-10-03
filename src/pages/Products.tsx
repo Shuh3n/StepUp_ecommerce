@@ -2,23 +2,37 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import ProductCard from "@/components/ProductCard";
 import ProductFilters from "@/components/ProductFilters";
-import ProductDetailModal from "@/components/ProductDetailModal";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
 import { useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { useNavigate } from 'react-router-dom';
+
+interface Size {
+  id_talla: number;
+  talla: string;
+}
+
+interface ProductVariant {
+  id_variante: number;
+  id_producto: number;
+  id_talla: number;
+  codigo_sku: string;
+  stock: number;
+  precio_ajuste: number;
+  size?: Size;
+}
 
 interface Product {
   id: number;
   name: string;
+  description?: string;
   price: number;
-  originalPrice?: number;
-  image?: string;
   image_url?: string;
   category: string;
-  rating: number;
-  isNew?: boolean;
-  sizes?: string[];
+  created_at?: string;
+  updated_at?: string;
+  variants: ProductVariant[];
 }
 
 export interface CartItem {
@@ -31,40 +45,87 @@ export interface CartItem {
 }
 
 const Products = () => {
+  const navigate = useNavigate();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 150000]);
   const [sortBy, setSortBy] = useState("newest");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
-  const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
+  // Update the useEffect to fetch only products first
   useEffect(() => {
     const fetchProducts = async () => {
       setLoadingProducts(true);
-      const { data, error } = await supabase.from('products').select('*');
-      if (!error && data) {
-        setProducts(data);
-      } else {
-        toast({ title: 'Error al cargar productos', description: error?.message, variant: 'destructive' });
+      try {
+        // Fetch products and their variants with sizes
+        const { data: productsData, error: productsError } = await supabase
+          .from('products')
+          .select(`
+            id,
+            name,
+            description,
+            price,
+            image_url,
+            category,
+            created_at,
+            products_variants (
+              id_variante,
+              id_producto,
+              id_talla,
+              codigo_sku,
+              stock,
+              precio_ajuste
+            )
+          `);
+
+        if (productsError) throw productsError;
+
+        // Fetch all sizes
+        const { data: sizesData, error: sizesError } = await supabase
+          .from('sizes')
+          .select('*');
+
+        if (sizesError) throw sizesError;
+
+        // Transform the data to include sizes in variants
+        const transformedProducts = productsData?.map(product => ({
+          ...product,
+          variants: product.products_variants.map((variant: ProductVariant) => ({
+            ...variant,
+            size: sizesData.find(size => size.id_talla === variant.id_talla)
+          }))
+        })) || [];
+
+        setProducts(transformedProducts);
+      } catch (error: any) {
+        console.error('Error fetching products:', error);
+        toast({ 
+          title: 'Error al cargar productos', 
+          description: error.message, 
+          variant: 'destructive' 
+        });
+      } finally {
+        setLoadingProducts(false);
       }
-      setLoadingProducts(false);
     };
+
     fetchProducts();
-  }, []);
+  }, [toast]);
 
   const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
 
+  // Update the product filtering to consider variants
   const filteredProducts = products.filter(product => {
     const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
-    const sizeMatch = selectedSizes.length === 0 || (product.sizes && selectedSizes.some(size => product.sizes.includes(size)));
+    const sizeMatch = selectedSizes.length === 0 || 
+      product.variants?.some(v => 
+        v.size && selectedSizes.includes(v.size.talla) && v.stock > 0
+      ) || false;
     return categoryMatch && priceMatch && sizeMatch;
   });
 
@@ -74,8 +135,6 @@ const Products = () => {
         return a.price - b.price;
       case "price-high":
         return b.price - a.price;
-      case "rating":
-        return b.rating - a.rating;
       default:
         return b.id - a.id; // newest first
     }
@@ -134,8 +193,8 @@ const Products = () => {
   };
 
   const handleProductClick = (product: Product) => {
-    setSelectedProduct(product);
-    setIsProductModalOpen(true);
+    console.log('Navigating to product:', product.id); // Debug log
+    navigate(`/productos/${product.id}`);
   };
 
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -146,8 +205,8 @@ const Products = () => {
       <Navbar 
         cartItems={totalItems}
         onCartClick={() => setIsCartOpen(true)}
-        onContactClick={() => setIsContactModalOpen(true)}
-        onFavoritesClick={() => setIsFavoritesModalOpen(true)}
+        onContactClick={() => {}} // Pass empty function if not needed
+        onFavoritesClick={() => {}} // Pass empty function if not needed
       />
       
       <main className="pt-20 px-4 sm:px-6 lg:px-8">
@@ -184,7 +243,11 @@ const Products = () => {
 
             {/* Products Grid */}
             <div className="lg:col-span-3">
-              {sortedProducts.length === 0 ? (
+              {loadingProducts ? (
+                <div className="text-center py-16">
+                  <p>Cargando productos...</p>
+                </div>
+              ) : sortedProducts.length === 0 ? (
                 <div className="text-center py-16">
                   <h3 className="text-2xl font-medium mb-4">No se encontraron productos</h3>
                   <p className="text-muted-foreground mb-6">
@@ -226,13 +289,6 @@ const Products = () => {
         items={cartItems}
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
-      />
-
-      <ProductDetailModal
-        isOpen={isProductModalOpen}
-        onClose={() => setIsProductModalOpen(false)}
-        product={selectedProduct}
-        onAddToCart={handleAddToCart}
       />
     </div>
   );

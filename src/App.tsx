@@ -12,7 +12,7 @@ import Index from "./pages/Index";
 import Products from "./pages/Products";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import ProductDetail from "./pages/ProductDetail";
+import ProductDetail from './pages/ProductDetail';
 import NotFound from "./pages/NotFound";
 import CompleteProfile from "./pages/CompleteProfile";
 import Profile from "./pages/Profile";
