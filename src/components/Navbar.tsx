@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ShoppingBag, User, Menu, Heart, Mail, Home, Package, LogOut } from "lucide-react";
+import { ShoppingBag, User, Menu, Heart, Mail, Home, Package, LogOut, ShoppingCart } from "lucide-react";
 import { supabase } from '../lib/supabase';
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from '../context/AuthContext';
@@ -142,7 +142,7 @@ const Navbar = ({
                 className="relative hover:scale-110 transition-all duration-200 hover:bg-primary/20"
                 onClick={onCartClick}
               >
-                <ShoppingBag className="h-5 w-5" />
+                <ShoppingCart className="h-5 w-5" />
                 {cartItems > 0 && (
                   <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0 bg-secondary text-secondary-foreground text-xs animate-pulse">
                     {cartItems}
