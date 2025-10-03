@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Minus, Plus, Type, X, RotateCcw, Contrast, FileText, Keyboard } from "lucide-react";
+import { Minus, Plus, Type, X, RotateCcw, Contrast, FileText, Keyboard, Accessibility } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const AccessibilityMenu = () => {
@@ -159,7 +159,7 @@ const AccessibilityMenu = () => {
         size="icon"
         aria-label="Abrir menú de accesibilidad (Alt + A)"
       >
-        <Type className="h-6 w-6" />
+        <Accessibility className="h-5 w-5" />
       </Button>
 
       {/* Accessibility Menu */}
@@ -170,7 +170,7 @@ const AccessibilityMenu = () => {
           }`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-lg text-card-foreground flex items-center gap-2">
-                <Type className="h-5 w-5 text-primary" />
+                <Accessibility className="h-5 w-5 text-primary" />
                 Accesibilidad
               </h3>
               <Button
