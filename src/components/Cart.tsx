@@ -10,14 +10,16 @@ interface CartItem {
   image: string;
   category: string;
   quantity: number;
+  selectedSize?: string;
+  variantId?: number;
 }
 
 interface CartProps {
   isOpen: boolean;
   onClose: () => void;
   items: CartItem[];
-  onUpdateQuantity: (id: number, quantity: number) => void;
-  onRemoveItem: (id: number) => void;
+  onUpdateQuantity: (id: number, quantity: number, selectedSize?: string) => void;
+  onRemoveItem: (id: number, selectedSize?: string) => void;
 }
 
 const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartProps) => {
@@ -85,7 +87,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
             <div className="space-y-4">
               {items.map((item) => (
                 <div
-                  key={item.id}
+                  key={`${item.id}-${item.selectedSize || 'no-size'}`}
                   className="flex gap-4 p-4 bg-card rounded-xl border border-white/10"
                 >
                   <img
@@ -96,9 +98,16 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
                   
                   <div className="flex-1">
                     <h4 className="font-medium text-sm mb-1">{item.name}</h4>
-                    <Badge variant="outline" className="text-xs mb-2">
-                      {item.category}
-                    </Badge>
+                    <div className="flex gap-2 mb-2">
+                      <Badge variant="outline" className="text-xs">
+                        {item.category}
+                      </Badge>
+                      {item.selectedSize && (
+                        <Badge variant="secondary" className="text-xs">
+                          Talla: {item.selectedSize}
+                        </Badge>
+                      )}
+                    </div>
                     <div className="text-primary font-bold">
                       ${(item.price * item.quantity).toLocaleString()}
                     </div>
@@ -108,7 +117,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => onRemoveItem(item.id)}
+                      onClick={() => onRemoveItem(item.id, item.selectedSize)}
                       className="h-6 w-6 text-destructive hover:text-destructive"
                     >
                       <Trash2 className="h-3 w-3" />
@@ -118,7 +127,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
+                        onClick={() => onUpdateQuantity(item.id, item.quantity - 1, item.selectedSize)}
                         className="h-6 w-6"
                         disabled={item.quantity <= 1}
                       >
@@ -132,7 +141,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => onUpdateQuantity(item.id, item.quantity + 1)}
+                        onClick={() => onUpdateQuantity(item.id, item.quantity + 1, item.selectedSize)}
                         className="h-6 w-6"
                       >
                         <Plus className="h-3 w-3" />

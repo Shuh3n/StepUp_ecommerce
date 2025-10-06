@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/Navbar";
+import Cart from "@/components/Cart";
 import { ArrowLeft } from "lucide-react";
 import { supabase } from '@/lib/supabase';
 
@@ -31,6 +32,17 @@ interface Product {
   variants: ProductVariant[];
 }
 
+export interface CartItem {
+  id: number;
+  name: string;
+  price: number;
+  image: string;
+  category: string;
+  quantity: number;
+  selectedSize: string;
+  variantId: number;
+}
+
 const ProductDetail = () => {
   const { id } = useParams();
   const location = useLocation();
@@ -39,6 +51,8 @@ const ProductDetail = () => {
   const [product, setProduct] = useState<Product | null>(null);
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -47,49 +61,50 @@ const ProductDetail = () => {
       try {
         console.log('Fetching product with ID:', id);
 
-        // Modified query to correctly join with sizes table
-        const { data, error } = await supabase
+        // Get product and variants separately to avoid relation issues
+        const { data: productOnly, error: productOnlyError } = await supabase
           .from('products')
-          .select(`
-            *,
-            products_variants (
-              id_variante,
-              id_producto,
-              id_talla,
-              codigo_sku,
-              stock,
-              precio_ajuste,
-              sizes (
-                id_talla,
-                talla
-              )
-            )
-          `)
+          .select('*')
           .eq('id', id)
           .single();
 
-        if (error) {
-          console.error('Supabase error:', error);
-          throw error;
+        if (productOnlyError) {
+          console.error('Product fetch error:', productOnlyError);
+          throw productOnlyError;
         }
 
-        if (!data) {
-          console.error('No data returned for ID:', id);
-          throw new Error('Product not found');
+        console.log('Product data:', productOnly);
+
+        // Get variants separately
+        const { data: variantsData, error: variantsError } = await supabase
+          .from('products_variants')
+          .select('*')
+          .eq('id_producto', id);
+
+        if (variantsError) {
+          console.error('Variants fetch error:', variantsError);
+          throw variantsError;
         }
 
-        console.log('Raw data:', data); // Debug log
+        console.log('Variants data:', variantsData);
 
-        // Transform the data to match our interface
+        // Transform the data to use codigo_sku as the size
         const transformedProduct = {
-          ...data,
-          variants: data.products_variants.map((variant: any) => ({
-            ...variant,
-            size: variant.sizes // Change from size to sizes to match the query
-          }))
+          ...productOnly,
+          variants: (variantsData || []).map((variant: any) => {
+            console.log('Processing variant:', variant);
+            return {
+              ...variant,
+              size: {
+                id_talla: variant.id_talla,
+                talla: variant.codigo_sku // Use codigo_sku directly as the size
+              }
+            };
+          })
         };
 
         console.log('Transformed product:', transformedProduct);
+        console.log('Product variants:', transformedProduct.variants);
         setProduct(transformedProduct);
       } catch (error: any) {
         console.error('Detailed error:', error);
@@ -117,12 +132,15 @@ const ProductDetail = () => {
     }
   }, [id, navigate, toast]);
 
+  // Calculate total items for cart badge
+  const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
         <Navbar 
-          cartItems={0}
-          onCartClick={() => {}}
+          cartItems={totalItems}
+          onCartClick={() => setIsCartOpen(true)}
           onContactClick={() => {}}
           onFavoritesClick={() => {}}
         />
@@ -137,8 +155,8 @@ const ProductDetail = () => {
     return (
       <div className="min-h-screen bg-background">
         <Navbar 
-          cartItems={0}
-          onCartClick={() => {}}
+          cartItems={totalItems}
+          onCartClick={() => setIsCartOpen(true)}
           onContactClick={() => {}}
           onFavoritesClick={() => {}}
         />
@@ -153,8 +171,29 @@ const ProductDetail = () => {
     );
   }
 
+  // Function to get available sizes from variants
+  const getAvailableSizes = () => {
+    if (!product?.variants) {
+      return [];
+    }
+    
+    const availableSizes = product.variants
+      .filter(variant => {
+        const hasValidStock = variant.stock && Number(variant.stock) > 0;
+        const hasValidSize = variant.size && variant.size.talla;
+        return hasValidStock && hasValidSize;
+      })
+      .map(variant => variant.size!.talla)
+      .filter((size, index, self) => self.indexOf(size) === index) // Remove duplicates
+      .sort();
+    
+    return availableSizes;
+  };
+
   // Function to check if variant has stock
-  const hasStock = (variant: ProductVariant) => variant.stock > 0;
+  const hasStock = (variant: ProductVariant) => {
+    return Number(variant.stock) > 0;
+  };
 
   // Function to get variant by size
   const getVariantBySize = (size: string) => {
@@ -169,11 +208,87 @@ const ProductDetail = () => {
     }
   };
 
+  // Function to add product to cart
+  const handleAddToCart = () => {
+    if (!product || !selectedSize) return;
+    
+    const variant = getVariantBySize(selectedSize);
+    if (!variant || !hasStock(variant)) {
+      toast({
+        title: "Error",
+        description: "No hay stock disponible para esta talla",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const cartItem: CartItem = {
+      id: product.id,
+      name: product.name,
+      price: product.price + (variant.precio_ajuste || 0),
+      image: product.image_url || '',
+      category: product.category,
+      quantity: 1,
+      selectedSize: selectedSize,
+      variantId: variant.id_variante
+    };
+
+    setCartItems(prev => {
+      const existingItem = prev.find(item => 
+        item.id === product.id && item.selectedSize === selectedSize
+      );
+      
+      if (existingItem) {
+        toast({
+          title: "Producto actualizado",
+          description: `Se aumentó la cantidad de ${product.name} talla ${selectedSize}`,
+        });
+        return prev.map(item =>
+          item.id === product.id && item.selectedSize === selectedSize
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      } else {
+        toast({
+          title: "Producto agregado",
+          description: `${product.name} talla ${selectedSize} se agregó al carrito`,
+        });
+        return [...prev, cartItem];
+      }
+    });
+  };
+
+  // Functions to handle cart operations
+  const handleUpdateQuantity = (id: number, quantity: number, selectedSize: string) => {
+    if (quantity <= 0) {
+      handleRemoveItem(id, selectedSize);
+      return;
+    }
+    
+    setCartItems(prev =>
+      prev.map(item =>
+        item.id === id && item.selectedSize === selectedSize
+          ? { ...item, quantity }
+          : item
+      )
+    );
+  };
+
+  const handleRemoveItem = (id: number, selectedSize: string) => {
+    setCartItems(prev => prev.filter(item => 
+      !(item.id === id && item.selectedSize === selectedSize)
+    ));
+    toast({
+      title: "Producto eliminado",
+      description: "El producto se eliminó del carrito",
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar 
-        cartItems={0}
-        onCartClick={() => {}}
+        cartItems={totalItems}
+        onCartClick={() => setIsCartOpen(true)}
         onContactClick={() => {}}
         onFavoritesClick={() => {}}
       />
@@ -224,54 +339,75 @@ const ProductDetail = () => {
                   {selectedSize ? `Talla seleccionada: ${selectedSize}` : 'Selecciona una talla'}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {['S', 'M', 'L'].map(size => {
-                  const variant = getVariantBySize(size);
-                  const isAvailable = variant && hasStock(variant);
-                  
-                  return (
-                    <Button
-                      key={size}
-                      variant={selectedSize === size ? "default" : "outline"}
-                      onClick={() => handleSizeSelect(size)}
-                      disabled={!isAvailable}
-                      className="min-w-[4rem] relative"
-                    >
-                      {size}
-                      {variant && (
-                        <span className="absolute -top-2 -right-2 text-xs">
-                          {hasStock(variant) ? (
+              
+              {getAvailableSizes().length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">No hay tallas disponibles</p>
+                  <p className="text-sm text-destructive">Producto agotado</p>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {getAvailableSizes().map(size => {
+                    const variant = getVariantBySize(size);
+                    const isAvailable = variant && hasStock(variant);
+                    
+                    return (
+                      <Button
+                        key={size}
+                        variant={selectedSize === size ? "default" : "outline"}
+                        onClick={() => handleSizeSelect(size)}
+                        disabled={!isAvailable}
+                        className="min-w-[4rem] relative"
+                      >
+                        {size}
+                        {variant && (
+                          <span className="absolute -top-2 -right-2 text-xs">
                             <span className="bg-primary/20 text-primary px-1 rounded-full">
                               {variant.stock}
                             </span>
-                          ) : (
-                            <span className="bg-destructive/20 text-destructive px-1 rounded-full">
-                              Agotado
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </Button>
-                  );
-                })}
-              </div>
+                          </span>
+                        )}
+                      </Button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <Button 
               size="lg" 
               className="w-full"
-              disabled={!selectedSize || !getVariantBySize(selectedSize)?.stock}
+              onClick={handleAddToCart}
+              disabled={!selectedSize || !getVariantBySize(selectedSize)?.stock || getAvailableSizes().length === 0}
             >
-              {!selectedSize 
-                ? 'Selecciona una talla' 
-                : !getVariantBySize(selectedSize)?.stock 
-                  ? 'Agotado'
-                  : 'Agregar al Carrito'
+              {getAvailableSizes().length === 0
+                ? 'Producto Agotado'
+                : !selectedSize 
+                  ? 'Selecciona una talla' 
+                  : !getVariantBySize(selectedSize)?.stock 
+                    ? 'Agotado'
+                    : 'Agregar al Carrito'
               }
             </Button>
           </div>
         </div>
       </main>
+
+      <Cart
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        items={cartItems}
+        onUpdateQuantity={(id, quantity, selectedSize) => {
+          if (selectedSize) {
+            handleUpdateQuantity(id, quantity, selectedSize);
+          }
+        }}
+        onRemoveItem={(id, selectedSize) => {
+          if (selectedSize) {
+            handleRemoveItem(id, selectedSize);
+          }
+        }}
+      />
     </div>
   );
 };
