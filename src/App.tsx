@@ -47,48 +47,48 @@ const App = () => {
           <AccessibilityMenu />
           <Router>
           <Routes>
-              {/* Rutas públicas */}
-              <Route path="/" element={<Index />} />
-              <Route path="/productos" element={<Products />} />
-              <Route path="/producto/:id" element={<ProductDetail />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/verify-email" element={<VerifyEmail />} />
-              <Route path="/auth-callback" element={<AuthCallback />} />
-              
-              {/* Ruta específica para nuevos usuarios de Google */}
-              <Route 
-                path="/complete-profile" 
-                element={
-                  <ProtectedRoute requiresAuth requiresNewUser>
-                    <CompleteProfile />
-                  </ProtectedRoute>
-                } 
-              />
+                <Route index element={<Index />} />
+                <Route path="/productos" element={<Products />} />
+                <Route path="/productos/:id" element={<ProductDetail />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
+                <Route path="/auth-callback" element={<AuthCallback />} />
+                
+                {/* Ruta específica para nuevos usuarios de Google */}
+                <Route 
+                  path="/complete-profile" 
+                  element={
+                    <ProtectedRoute requiresAuth requiresNewUser>
+                      <CompleteProfile />
+                    </ProtectedRoute>
+                  } 
+                />
 
-              {/* Rutas protegidas que requieren autenticación */}
-              <Route 
-                path="/profile" 
-                element={
-                  <ProtectedRoute>
-                    <Profile />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/admin"
-                element={
-                  <AdminRoute>
-                    <Admin />
-                  </AdminRoute>
-                }
-              />
+                {/* Rutas protegidas que requieren autenticación */}
+                <Route 
+                  path="/profile" 
+                  element={
+                    <ProtectedRoute>
+                      <Profile />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/admin"
+                  element={
+                    <AdminRoute>
+                      <Admin />
+                    </AdminRoute>
+                  }
+                />
 
 
-              {/* Ruta catch-all */}
-              <Route path="*" element={<NotFound />} />
+                {/* Ruta catch-all */}
+                <Route path="*" element={<NotFound />} />
+          
           </Routes>
         </Router>
         </TooltipProvider>

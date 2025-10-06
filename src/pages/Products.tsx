@@ -140,9 +140,19 @@ const Products = () => {
     }
   });
 
-  const handleAddToCart = (product: any) => {
+  const handleAddToCart = (product: Product) => {
     setCartItems(prev => {
       const existingItem = prev.find(item => item.id === product.id);
+      
+      // Create cart item from product
+      const cartItem: CartItem = {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.image_url || '',
+        category: product.category,
+        quantity: 1
+      };
       
       if (existingItem) {
         toast({
@@ -159,7 +169,7 @@ const Products = () => {
           title: "Producto agregado",
           description: `${product.name} se agregó al carrito`,
         });
-        return [...prev, { ...product, quantity: 1 }];
+        return [...prev, cartItem];
       }
     });
   };
@@ -193,7 +203,7 @@ const Products = () => {
   };
 
   const handleProductClick = (product: Product) => {
-    console.log('Navigating to product:', product.id); // Debug log
+    console.log('Navigating to product:', product); // Debug log
     navigate(`/productos/${product.id}`);
   };
 
@@ -271,7 +281,7 @@ const Products = () => {
                       <ProductCard
                         {...product}
                         image={product.image_url}
-                        onAddToCart={handleAddToCart}
+                        onAddToCart={() => handleAddToCart(product)} // Changed this line
                         onClick={() => handleProductClick(product)}
                       />
                     </div>

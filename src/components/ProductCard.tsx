@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ShoppingBag } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
 
 interface ProductVariant {
   id_variante: number;
@@ -17,7 +17,7 @@ interface ProductCardProps {
   image?: string;
   category: string;
   variants?: ProductVariant[];
-  onAddToCart?: (product: any) => void;
+  onAddToCart?: () => void; // Changed to function with no parameters
   onClick?: () => void;
 }
 
@@ -38,13 +38,6 @@ const ProductCard = ({
       className="group relative flex flex-col rounded-xl bg-background transition-all hover:shadow-xl cursor-pointer"
       onClick={onClick}
     >
-      {/* Out of Stock Badge */}
-      {!hasStock && (
-        <div className="absolute top-4 right-4 z-10 bg-red-500 text-white px-3 py-1 rounded-md text-sm">
-          Agotado
-        </div>
-      )}
-
       {/* Image Container - Modified to fill edges */}
       <div className="aspect-square overflow-hidden bg-muted rounded-t-xl">
         <img
@@ -54,7 +47,7 @@ const ProductCard = ({
         />
       </div>
 
-      {/* Content Container - Modified height */}
+      {/* Content Container */}
       <div className="min-h-[160px] bg-black flex flex-col justify-between p-6 rounded-b-xl">
         <div className="space-y-2">
           {/* Category */}
@@ -66,7 +59,7 @@ const ProductCard = ({
           </h3>
         </div>
 
-        {/* Price and Cart Button */}
+        {/* Price and Cart Button - Updated */}
         <div className="flex items-center justify-between pt-2">
           <p className="text-xl font-bold text-white">
             ${price.toLocaleString()}
@@ -77,17 +70,24 @@ const ProductCard = ({
               variant="secondary"
               size="sm"
               onClick={(e) => {
-                e.stopPropagation();
-                onAddToCart({ id, name, price, image, category });
+                e.stopPropagation(); // Prevent triggering onClick (product detail)
+                onAddToCart(); // Call without parameters
               }}
               disabled={!hasStock}
-              className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white"
             >
-              <ShoppingBag className="h-4 w-4 mr-2" />
+              <ShoppingCart className="h-4 w-4" />
               Agregar
             </Button>
           )}
         </div>
+
+        {/* Out of Stock Badge */}
+        {!hasStock && (
+          <div className="absolute top-4 right-4 z-10 bg-red-500 text-white px-3 py-1 rounded-md text-sm">
+            Agotado
+          </div>
+        )}
       </div>
     </div>
   );
