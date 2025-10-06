@@ -1,19 +1,23 @@
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Heart, ShoppingBag, Star } from "lucide-react";
+import { ShoppingCart } from "lucide-react";
+
+interface ProductVariant {
+  id_variante: number;
+  id_producto: number;
+  id_talla: number;
+  codigo_sku: string;
+  stock: number;
+  precio_ajuste: number;
+}
 
 interface ProductCardProps {
   id: number;
   name: string;
   price: number;
-  originalPrice?: number;
   image?: string;
-  image_url?: string;
   category: string;
-  rating: number;
-  isNew?: boolean;
-  onAddToCart: (product: any) => void;
+  variants?: ProductVariant[];
+  onAddToCart?: () => void; // Changed to function with no parameters
   onClick?: () => void;
 }
 
@@ -21,113 +25,69 @@ const ProductCard = ({
   id,
   name,
   price,
-  originalPrice,
   image,
-  image_url,
   category,
-  rating,
-  isNew,
+  variants,
   onAddToCart,
   onClick,
 }: ProductCardProps) => {
-  const [isLiked, setIsLiked] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
-
-  const handleAddToCart = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onClick?.(); // Open product detail modal to select size
-  };
-
-  const discount = originalPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
+  const hasStock = variants?.some((variant) => variant.stock > 0);
 
   return (
     <div
-      className="group relative bg-card rounded-2xl overflow-hidden shadow-lg hover:shadow-floating transition-all duration-500 hover:scale-[1.05] hover:-translate-y-2 animate-fade-in"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      className="group relative flex flex-col rounded-xl bg-background transition-all hover:shadow-xl cursor-pointer"
+      onClick={onClick}
     >
-      {/* Badges */}
-      <div className="absolute top-3 left-3 z-10 flex flex-col gap-2">
-        {isNew && (
-          <Badge className="bg-primary text-primary-foreground">
-            Nuevo
-          </Badge>
-        )}
-        {discount > 0 && (
-          <Badge className="bg-secondary text-secondary-foreground">
-            -{discount}%
-          </Badge>
-        )}
-      </div>
-
-      {/* Like Button */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className={`absolute top-3 right-3 z-10 rounded-full transition-all duration-300 ${
-          isLiked ? "text-red-500 bg-white/20" : "text-white bg-black/20"
-        } ${isHovered ? "opacity-100" : "opacity-0"}`}
-        onClick={() => setIsLiked(!isLiked)}
-      >
-        <Heart className={`h-4 w-4 ${isLiked ? "fill-current" : ""}`} />
-      </Button>
-
-      {/* Product Image */}
-      <div 
-        className="relative aspect-square overflow-hidden cursor-pointer"
-        onClick={onClick}
-      >
+      {/* Image Container - Modified to fill edges */}
+      <div className="aspect-square overflow-hidden bg-muted rounded-t-xl">
         <img
-          src={image_url || image}
+          src={image || "/images/placeholder.png"}
           alt={name}
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
         />
-        
-        {/* Overlay on hover */}
-        <div className={`absolute inset-0 bg-black/30 transition-all duration-500 ${
-          isHovered ? "opacity-100 backdrop-blur-sm" : "opacity-0"
-        }`}>
-          <div className="absolute bottom-4 left-4 right-4 transform transition-all duration-300 ${isHovered ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}">
-            <Button
-              variant="default"
-              className="w-full bg-red-500/90 hover:bg-red-600/90 backdrop-blur-md border border-red-400/30 text-white shadow-lg hover:shadow-red-500/25 transition-all duration-300 hover:scale-105"
-              onClick={handleAddToCart}
-            >
-              <ShoppingBag className="h-4 w-4 mr-2" />
-              Ver Detalles
-            </Button>
-          </div>
-        </div>
       </div>
 
-      {/* Product Info */}
-      <div className="p-4 cursor-pointer" onClick={onClick}>
-        <div className="flex items-center justify-between mb-2">
-          <Badge variant="outline" className="text-xs">
-            {category}
-          </Badge>
-          <div className="flex items-center gap-1">
-            <Star className="h-3 w-3 text-yellow-400 fill-current" />
-            <span className="text-xs text-muted-foreground">{rating}</span>
-          </div>
+      {/* Content Container */}
+      <div className="min-h-[160px] bg-black flex flex-col justify-between p-6 rounded-b-xl">
+        <div className="space-y-2">
+          {/* Category */}
+          <p className="text-sm text-gray-300">{category}</p>
+
+          {/* Product Name */}
+          <h3 className="font-medium text-lg line-clamp-1 text-white">
+            {name}
+          </h3>
         </div>
 
-        <h3 className="font-semibold text-card-foreground mb-2 line-clamp-2">
-          {name}
-        </h3>
+        {/* Price and Cart Button - Updated */}
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-xl font-bold text-white">
+            ${price.toLocaleString()}
+          </p>
 
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-primary">
-              ${price.toLocaleString()}
-            </span>
-            {originalPrice && (
-              <span className="text-sm text-muted-foreground line-through">
-                ${originalPrice.toLocaleString()}
-              </span>
-            )}
-          </div>
+          {onAddToCart && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent triggering onClick (product detail)
+                onAddToCart(); // Call without parameters
+              }}
+              disabled={!hasStock}
+              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white"
+            >
+              <ShoppingCart className="h-4 w-4" />
+              Agregar
+            </Button>
+          )}
         </div>
+
+        {/* Out of Stock Badge */}
+        {!hasStock && (
+          <div className="absolute top-4 right-4 z-10 bg-red-500 text-white px-3 py-1 rounded-md text-sm">
+            Agotado
+          </div>
+        )}
       </div>
     </div>
   );
