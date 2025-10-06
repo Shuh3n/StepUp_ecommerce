@@ -521,7 +521,7 @@ const Admin = () => {
 
     return (
         <div className="min-h-screen bg-background">
-            <Navbar cartItems={0} onCartClick={() => { }} />
+            <Navbar cartItems={0} onCartClick={() => {}} onContactClick={() => {}} onFavoritesClick={() => {}} />
             <main className="pt-24 px-4 sm:px-6 lg:px-8 pb-16">
                 <div className="w-[70vw] mx-auto">
                     <div className="mb-8">
