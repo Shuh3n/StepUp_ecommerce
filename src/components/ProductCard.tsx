@@ -1,6 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { ShoppingCart } from "lucide-react";
 
+interface Size {
+  id_talla: number;
+  nombre_talla: string;
+}
+
 interface ProductVariant {
   id_variante: number;
   id_producto: number;
@@ -8,6 +13,7 @@ interface ProductVariant {
   codigo_sku: string;
   stock: number;
   precio_ajuste: number;
+  size?: Size;
 }
 
 interface ProductCardProps {
@@ -17,7 +23,7 @@ interface ProductCardProps {
   image?: string;
   category: string;
   variants?: ProductVariant[];
-  onAddToCart?: () => void; // Changed to function with no parameters
+  onAddToCart?: () => void;
   onClick?: () => void;
 }
 
@@ -31,7 +37,17 @@ const ProductCard = ({
   onAddToCart,
   onClick,
 }: ProductCardProps) => {
-  const hasStock = variants?.some((variant) => variant.stock > 0);
+  // Check if any variant has stock > 0
+  const hasStock = variants?.some((variant) => {
+    const stockValue = variant.stock;
+    if (stockValue !== null && stockValue !== undefined) {
+      const numericStock = parseInt(String(stockValue), 10);
+      return !isNaN(numericStock) && numericStock > 0;
+    }
+    return false;
+  }) || false;
+
+  console.log(`ProductCard ${name}: hasStock=${hasStock}, variants:`, variants);
 
   return (
     <div

@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router-dom';
 
 interface Size {
   id_talla: number;
-  talla: string;
+  nombre_talla: string;
 }
 
 interface ProductVariant {
@@ -61,43 +61,34 @@ const Products = () => {
     const fetchProducts = async () => {
       setLoadingProducts(true);
       try {
-        // Fetch products and their variants with sizes
+        // Fetch products first
         const { data: productsData, error: productsError } = await supabase
           .from('products')
-          .select(`
-            id,
-            name,
-            description,
-            price,
-            image_url,
-            category,
-            created_at,
-            products_variants (
-              id_variante,
-              id_producto,
-              id_talla,
-              codigo_sku,
-              stock,
-              precio_ajuste
-            )
-          `);
+          .select('*');
 
         if (productsError) throw productsError;
 
-        // Fetch all sizes
-        const { data: sizesData, error: sizesError } = await supabase
-          .from('sizes')
-          .select('*');
+        // Fetch all variants with size information separately
+        const { data: variantsData, error: variantsError } = await supabase
+          .from('products_variants')
+          .select(`
+            *,
+            size:sizes!id_talla (
+              id_talla,
+              nombre_talla
+            )
+          `);
 
-        if (sizesError) throw sizesError;
+        if (variantsError) throw variantsError;
 
-        // Transform the data to include sizes in variants
+        console.log('Products data:', productsData);
+        console.log('Variants data with sizes:', variantsData);
+
+        // Use variants data with size information
         const transformedProducts = productsData?.map(product => ({
           ...product,
-          variants: product.products_variants.map((variant: ProductVariant) => ({
-            ...variant,
-            size: sizesData.find(size => size.id_talla === variant.id_talla)
-          }))
+          variants: (variantsData || [])
+            .filter(variant => variant.id_producto === product.id)
         })) || [];
 
         setProducts(transformedProducts);
@@ -124,7 +115,7 @@ const Products = () => {
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
     const sizeMatch = selectedSizes.length === 0 || 
       product.variants?.some(v => 
-        v.size && selectedSizes.includes(v.size.talla) && v.stock > 0
+        v.size && selectedSizes.includes(v.size.nombre_talla?.trim() || '') && v.stock > 0
       ) || false;
     return categoryMatch && priceMatch && sizeMatch;
   });
