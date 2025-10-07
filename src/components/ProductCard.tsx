@@ -31,7 +31,8 @@ const ProductCard = ({
   onAddToCart,
   onClick,
 }: ProductCardProps) => {
-  const hasStock = variants?.some((variant) => variant.stock > 0);
+  // Si no hay variantes, consideramos que el producto está disponible (para productos sin variants)
+  const hasStock = !variants || variants.length === 0 || variants.some((variant) => variant.stock > 0);
 
   return (
     <div
@@ -83,7 +84,7 @@ const ProductCard = ({
         </div>
 
         {/* Out of Stock Badge */}
-        {!hasStock && (
+        {variants && variants.length > 0 && !variants.some((variant) => variant.stock > 0) && (
           <div className="absolute top-4 right-4 z-10 bg-red-500 text-white px-3 py-1 rounded-md text-sm">
             Agotado
           </div>

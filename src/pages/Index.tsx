@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import ProductDetailModal from "@/components/ProductDetailModal";
 import Cart from "@/components/Cart";
-import ProductCard from "@/components/ProductCard";
+import ProductGrid from "@/components/ProductGrid";
 import { ArrowRight } from "lucide-react";
 import { useEffect } from "react";
 import { supabase } from "@/lib/supabase";
@@ -34,13 +34,44 @@ const Index = () => {
   useEffect(() => {
     const fetchProducts = async () => {
       setLoadingProducts(true);
-      const { data, error } = await supabase.from('products').select('*');
-      if (!error && data) {
-        setFeaturedProducts(data);
-      } else {
+      try {
+        // Traer productos con join a products_variants
+        const { data: productsData, error: productsError } = await supabase
+          .from('products')
+          .select(`
+            id,
+            name,
+            description,
+            price,
+            image_url,
+            category,
+            created_at,
+            products_variants (
+              id_variante,
+              id_producto,
+              id_talla,
+              codigo_sku,
+              stock,
+              precio_ajuste
+            )
+          `);
+
+        if (productsError) throw productsError;
+
+        // Transformar para que todos tengan variants
+        const featured = productsData?.map(product => ({
+          ...product,
+          variants: Array.isArray(product.products_variants)
+            ? product.products_variants
+            : []
+        })) || [];
+  console.log('[DEBUG] featuredProducts:', featured);
+  setFeaturedProducts(featured);
+      } catch (error) {
         toast({ title: 'Error al cargar productos', description: error?.message, variant: 'destructive' });
+      } finally {
+        setLoadingProducts(false);
       }
-      setLoadingProducts(false);
     };
     fetchProducts();
   }, []);
@@ -121,29 +152,13 @@ const Index = () => {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-              {loadingProducts ? (
-                <div className="col-span-4 text-center py-8 text-muted-foreground">Cargando productos...</div>
-              ) : featuredProducts.length === 0 ? (
-                <div className="col-span-4 text-center py-8 text-muted-foreground">No hay productos disponibles.</div>
-              ) : (
-                featuredProducts.map((product, index) => (
-                  <div
-                    key={product.id}
-                    className="animate-fade-in-up"
-                    style={{ animationDelay: `${index * 0.1}s` }}
-                  >
-                    <a href={`/producto/${product.id}`} className="block">
-                      <ProductCard
-                        {...product}
-                        image={product.image_url}
-                        onAddToCart={handleAddToCart}
-                      />
-                    </a>
-                  </div>
-                ))
-              )}
-            </div>
+            {loadingProducts ? (
+              <div className="col-span-4 text-center py-8 text-muted-foreground">Cargando productos...</div>
+            ) : featuredProducts.length === 0 ? (
+              <div className="col-span-4 text-center py-8 text-muted-foreground">No hay productos disponibles.</div>
+            ) : (
+              <ProductGrid products={featuredProducts} onAddToCart={handleAddToCart} />
+            )}
 
             <div className="text-center">
               <Button 

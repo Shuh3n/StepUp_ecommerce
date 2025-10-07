@@ -58,6 +58,7 @@ const Products = () => {
 
   // Update the useEffect to fetch only products first
   useEffect(() => {
+    let productsChannel: any = null;
     const fetchProducts = async () => {
       setLoadingProducts(true);
       try {
@@ -82,6 +83,7 @@ const Products = () => {
             )
           `);
 
+        console.log('[DEBUG] productsData:', productsData);
         if (productsError) throw productsError;
 
         // Fetch all sizes
@@ -91,13 +93,15 @@ const Products = () => {
 
         if (sizesError) throw sizesError;
 
-        // Transform the data to include sizes in variants
+        // Transform the data to include sizes in variants, handle products without variants
         const transformedProducts = productsData?.map(product => ({
           ...product,
-          variants: product.products_variants.map((variant: ProductVariant) => ({
-            ...variant,
-            size: sizesData.find(size => size.id_talla === variant.id_talla)
-          }))
+          variants: Array.isArray(product.products_variants)
+            ? product.products_variants.map((variant: ProductVariant) => ({
+                ...variant,
+                size: sizesData.find(size => size.id_talla === variant.id_talla)
+              }))
+            : []
         })) || [];
 
         setProducts(transformedProducts);
@@ -114,18 +118,41 @@ const Products = () => {
     };
 
     fetchProducts();
+
+    // Suscripción en tiempo real a la tabla products
+    productsChannel = supabase
+      .channel('products-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products' },
+        (payload) => {
+          console.log('[Realtime] Cambio detectado en products:', payload);
+          fetchProducts();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (productsChannel) {
+        supabase.removeChannel(productsChannel);
+      }
+    };
   }, [toast]);
 
   const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
 
-  // Update the product filtering to consider variants
+  // Permitir mostrar productos aunque no tengan variantes
   const filteredProducts = products.filter(product => {
     const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
-    const sizeMatch = selectedSizes.length === 0 || 
-      product.variants?.some(v => 
-        v.size && selectedSizes.includes(v.size.talla) && v.stock > 0
-      ) || false;
+    let sizeMatch = true;
+    if (selectedSizes.length > 0) {
+      if (product.variants && product.variants.length > 0) {
+        sizeMatch = product.variants.some(v => v.size && selectedSizes.includes(v.size.talla) && v.stock > 0);
+      } else {
+        sizeMatch = false;
+      }
+    }
     return categoryMatch && priceMatch && sizeMatch;
   });
 
@@ -279,9 +306,13 @@ const Products = () => {
                       style={{ animationDelay: `${index * 0.1}s` }}
                     >
                       <ProductCard
-                        {...product}
+                        id={product.id}
+                        name={product.name}
+                        price={product.price}
                         image={product.image_url}
-                        onAddToCart={() => handleAddToCart(product)} // Changed this line
+                        category={product.category}
+                        variants={product.variants || []}
+                        onAddToCart={() => handleAddToCart(product)}
                         onClick={() => handleProductClick(product)}
                       />
                     </div>

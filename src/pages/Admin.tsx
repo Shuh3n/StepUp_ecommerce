@@ -29,7 +29,7 @@ import {
     DropdownMenuItem,
     DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Download, Eye, EyeOff } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,9 +38,10 @@ import { Label } from "@/components/ui/label";
 import { ChartContainer } from "@/components/ui/chart";
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import { BarChart, Users, Package } from "lucide-react";
+import { BarChart, Users, Package, LayoutDashboard, AlertTriangle, TrendingUp, ShoppingCart, DollarSign, Clock } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { supabase } from '../lib/supabase';
+import ProductFilters from "@/components/ProductFilters";
 import {
     Dialog,
     DialogTrigger,
@@ -181,6 +182,25 @@ const Admin = () => {
     const [editImageError, setEditImageError] = useState<string | null>(null);
     const [editImageFile, setEditImageFile] = useState<File | null>(null);
 
+    // Filtros de productos
+    const [filterCategory, setFilterCategory] = useState<string>("all");
+    const [filterPrice, setFilterPrice] = useState<[number, number]>([0, 150000]);
+    const [filterActive, setFilterActive] = useState<string>("all");
+    const [sortBy, setSortBy] = useState<string>("newest");
+    // Para exportar CSV
+    const exportToCSV = () => {
+        const headers = ["ID", "Nombre", "Categoría", "Stock", "Stock mínimo", "Precio", "Activo"];
+        const rows = filteredProducts.map(p => [p.id, p.name, p.category, p.stock, p.stock_minimo, p.price, p.active ? "Sí" : "No"]);
+        let csv = headers.join(",") + "\n" + rows.map(r => r.join(",")).join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "inventario.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
     // Handler para abrir modal de edición
     const handleEditProduct = (product: any) => {
         setEditProduct(product);
@@ -241,7 +261,7 @@ const Admin = () => {
         }
     };
     // Inventario
-    const [products, setProducts] = useState<Product[]>([]);
+    const [products, setProducts] = useState<(Product & { active?: boolean })[]>([]);
     const [inventoryMovements, setInventoryMovements] = useState<InventoryMovement[]>([]);
     // Paginación para historial de movimientos
     const [movementPage, setMovementPage] = useState(1);
@@ -257,11 +277,35 @@ const Admin = () => {
     const fetchProducts = async () => {
         const { data, error } = await supabase.from('products').select('*');
         if (!error && data) {
-            setProducts(data);
+            // Si no existe el campo active, lo agregamos por defecto en true
+            setProducts(data.map((p: any) => ({ ...p, active: p.active !== undefined ? p.active : true })));
         } else {
             toast({ title: 'Error al cargar productos', description: error?.message, variant: 'destructive' });
         }
     };
+    // Cambiar estado activo/inactivo
+    const handleToggleActive = async (product: Product & { active?: boolean }) => {
+        const newActive = !product.active;
+        const { error } = await supabase.from('products').update({ active: newActive }).eq('id', product.id);
+        if (!error) {
+            setProducts(products.map(p => p.id === product.id ? { ...p, active: newActive } : p));
+            toast({ title: `Producto ${newActive ? 'activado' : 'desactivado'}` });
+        } else {
+            toast({ title: 'Error al actualizar estado', description: error.message, variant: 'destructive' });
+        }
+    };
+    // Filtros y ordenamiento
+    const filteredProducts = products
+        .filter(p => filterCategory === "all" || p.category === filterCategory)
+        .filter(p => p.price >= filterPrice[0] && p.price <= filterPrice[1])
+        .filter(p => filterActive === "all" ? true : filterActive === "active" ? p.active !== false : p.active === false)
+        .sort((a, b) => {
+            if (sortBy === "price-low") return a.price - b.price;
+            if (sortBy === "price-high") return b.price - a.price;
+            if (sortBy === "newest") return b.id - a.id;
+            return 0;
+        });
+    const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
 
 
     // Actualizar inventario y registrar movimiento
@@ -348,12 +392,65 @@ const Admin = () => {
     const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
     const [loadingAction, setLoadingAction] = useState<string | null>(null);
     const { toast } = useToast();
-    const [activeTab, setActiveTab] = useState("users");
+    const [activeTab, setActiveTab] = useState("dashboard");
 
+    // Declarar ordersData antes del useEffect para evitar el error de uso antes de declaración
     const [userData, setUserData] = useState<User[]>([]);
     const [ordersData, setOrdersData] = useState<any[]>([]);
     const [orderColumns, setOrderColumns] = useState<string[]>([]);
     const [siteStats, setSiteStats] = useState({ totalUsers: 0, totalOrders: 0 });
+    const [dashboardKPIs, setDashboardKPIs] = useState({
+        totalProducts: 0,
+        lowStock: 0,
+        salesThisMonth: 0,
+        pendingOrders: 0,
+        totalIncome: 0,
+        recentOrders: [],
+        notifications: []
+    });
+
+    // Calcular KPIs cuando cambian los datos relevantes
+    useEffect(() => {
+        // Total de productos
+        const totalProducts = products.length;
+        // Stock bajo o agotado
+        const lowStock = products.filter(p => p.stock <= p.stock_minimo).length;
+        // Ventas del mes (sumar total de pedidos completados este mes)
+        const now = new Date();
+        const month = now.getMonth();
+        const year = now.getFullYear();
+        const salesThisMonth = ordersData.filter(o => {
+            const d = o.created_at ? new Date(o.created_at) : null;
+            return d && d.getMonth() === month && d.getFullYear() === year && (o.status === 'Entregado' || o.status === 'Completado');
+        }).length;
+        // Pedidos pendientes
+        const pendingOrders = ordersData.filter(o => o.status === 'Pendiente' || o.status === 'procesando').length;
+        // Ingresos totales del mes
+        const totalIncome = ordersData.filter(o => {
+            const d = o.created_at ? new Date(o.created_at) : null;
+            return d && d.getMonth() === month && d.getFullYear() === year && (o.status === 'Entregado' || o.status === 'Completado');
+        }).reduce((acc, o) => acc + (o.total || 0), 0);
+        // Últimas actividades/pedidos recientes (últimos 5)
+        const recentOrders = [...ordersData].sort((a, b) => {
+            const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            return dateB - dateA;
+        }).slice(0, 5);
+        // Notificaciones importantes
+        const notifications = [];
+        if (lowStock > 0) notifications.push(`¡Hay ${lowStock} productos con stock bajo o agotado!`);
+        setDashboardKPIs({
+            totalProducts,
+            lowStock,
+            salesThisMonth,
+            pendingOrders,
+            totalIncome,
+            recentOrders,
+            notifications
+        });
+    }, [products, ordersData]);
+
+    // (Ya declaradas arriba para evitar error de uso antes de declaración)
     const [editingUserId, setEditingUserId] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<Partial<User>>({});
     const [editModalOpen, setEditModalOpen] = useState(false);
@@ -448,7 +545,8 @@ const Admin = () => {
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'products' },
-                () => {
+                (payload) => {
+                    console.log('[Realtime] Cambio detectado en products:', payload);
                     fetchProducts();
                 }
             )
@@ -516,12 +614,12 @@ const Admin = () => {
 
     const [productsPage, setProductsPage] = useState(1);
     const productsPerPage = 10;
-    const totalProductsPages = Math.ceil(products.length / productsPerPage);
-    const paginatedProducts = products.slice((productsPage - 1) * productsPerPage, productsPage * productsPerPage);
+    const totalProductsPages = Math.ceil(filteredProducts.length / productsPerPage);
+    const paginatedProducts = filteredProducts.slice((productsPage - 1) * productsPerPage, productsPage * productsPerPage);
 
     return (
         <div className="min-h-screen bg-background">
-            <Navbar cartItems={0} onCartClick={() => { }} />
+            <Navbar cartItems={0} onCartClick={() => { }} onContactClick={() => {}} onFavoritesClick={() => {}} />
             <main className="pt-24 px-4 sm:px-6 lg:px-8 pb-16">
                 <div className="w-[70vw] mx-auto">
                     <div className="mb-8">
@@ -534,7 +632,11 @@ const Admin = () => {
                     </div>
 
                     <Tabs defaultValue={activeTab} value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-                        <TabsList className="grid grid-cols-5 w-full max-w-xl">
+                        <TabsList className="grid grid-cols-6 w-full max-w-2xl">
+                            <TabsTrigger value="dashboard">
+                                <LayoutDashboard className="h-4 w-4 mr-2" />
+                                Dashboard
+                            </TabsTrigger>
                             <TabsTrigger value="users">
                                 <Users className="h-4 w-4 mr-2" />
                                 Usuarios
@@ -556,6 +658,74 @@ const Admin = () => {
                                 Estadísticas
                             </TabsTrigger>
                         </TabsList>
+                        {/* Dashboard */}
+                        <TabsContent value="dashboard" className="space-y-6">
+                            <Card className="glass border-white/20">
+                                <CardHeader>
+                                    <CardTitle>Dashboard / Resumen General</CardTitle>
+                                    <CardDescription>Indicadores clave y resumen de la actividad reciente</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
+                                            <Package className="h-8 w-8 text-primary" />
+                                            <div>
+                                                <div className="text-2xl font-bold">{dashboardKPIs.totalProducts}</div>
+                                                <div className="text-muted-foreground">Total productos</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
+                                            <AlertTriangle className="h-8 w-8 text-yellow-500" />
+                                            <div>
+                                                <div className="text-2xl font-bold">{dashboardKPIs.lowStock}</div>
+                                                <div className="text-muted-foreground">Stock bajo o agotado</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
+                                            <TrendingUp className="h-8 w-8 text-green-500" />
+                                            <div>
+                                                <div className="text-2xl font-bold">{dashboardKPIs.salesThisMonth}</div>
+                                                <div className="text-muted-foreground">Ventas del mes</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
+                                            <ShoppingCart className="h-8 w-8 text-blue-500" />
+                                            <div>
+                                                <div className="text-2xl font-bold">{dashboardKPIs.pendingOrders}</div>
+                                                <div className="text-muted-foreground">Pedidos pendientes</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
+                                            <DollarSign className="h-8 w-8 text-emerald-500" />
+                                            <div>
+                                                <div className="text-2xl font-bold">{dashboardKPIs.totalIncome.toLocaleString('es-CO', { style: 'currency', currency: 'COP' })}</div>
+                                                <div className="text-muted-foreground">Ingresos del mes</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="mb-6">
+                                        <h3 className="font-bold mb-2 text-muted-foreground flex items-center"><Clock className="h-5 w-5 mr-2" />Últimas actividades / Pedidos recientes</h3>
+                                        <ul className="space-y-2">
+                                            {dashboardKPIs.recentOrders.length === 0 && <li className="text-muted-foreground">No hay pedidos recientes.</li>}
+                                            {dashboardKPIs.recentOrders.map((order, idx) => (
+                                                <li key={order.id || idx} className="p-2 bg-background rounded border border-white/10 flex flex-col md:flex-row md:items-center md:justify-between">
+                                                    <span><b>#{order.id}</b> - {order.status} - {order.total ? `$${order.total.toFixed(2)}` : ''}</span>
+                                                    <span className="text-xs text-muted-foreground">{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                    {dashboardKPIs.notifications.length > 0 && (
+                                        <div className="mb-4">
+                                            <h3 className="font-bold mb-2 text-muted-foreground flex items-center"><AlertTriangle className="h-5 w-5 mr-2 text-yellow-500" />Notificaciones importantes</h3>
+                                            <ul className="list-disc pl-6 space-y-1">
+                                                {dashboardKPIs.notifications.map((n, i) => <li key={i} className="text-yellow-600 font-semibold">{n}</li>)}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
 
                         {/* Usuarios */}
                         <TabsContent value="users" className="space-y-6">
@@ -959,12 +1129,35 @@ const Admin = () => {
                                     <CardDescription>Administra los productos, categorías y stock</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="flex justify-end mb-4">
-                                        <Button variant="default" size="sm" onClick={() => setShowCreateProductModal(true)}>
-                                            Nuevo producto
-                                        </Button>
+                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
+                                        <div className="flex-1">
+                                            <ProductFilters
+                                                categories={categories}
+                                                selectedCategory={filterCategory}
+                                                onCategoryChange={setFilterCategory}
+                                                priceRange={filterPrice}
+                                                onPriceRangeChange={setFilterPrice}
+                                                sortBy={sortBy}
+                                                onSortChange={setSortBy}
+                                                selectedSizes={[]}
+                                                onSizeChange={() => {}}
+                                                onClearFilters={() => {
+                                                    setFilterCategory("all");
+                                                    setFilterPrice([0, 150000]);
+                                                    setFilterActive("all");
+                                                }}
+                                            />
+                                        </div>
+                                        <div className="flex gap-2 items-center">
+                                            <Button variant="outline" size="sm" onClick={exportToCSV} title="Exportar CSV">
+                                                <Download className="h-4 w-4 mr-1" /> Exportar CSV
+                                            </Button>
+                                            <Button variant="default" size="sm" onClick={() => setShowCreateProductModal(true)}>
+                                                Nuevo producto
+                                            </Button>
+                                        </div>
                                     </div>
-                                    <div className="overflow-x-auto">
+                                    <div className="overflow-x-auto rounded-xl border border-white/10 bg-background/80 shadow">
                                         <table className="min-w-full text-sm">
                                             <thead>
                                                 <tr>
@@ -974,12 +1167,13 @@ const Admin = () => {
                                                     <th className="px-2 py-1 text-left">Stock</th>
                                                     <th className="px-2 py-1 text-left">Stock mínimo</th>
                                                     <th className="px-2 py-1 text-left">Precio</th>
+                                                    <th className="px-2 py-1 text-left">Activo</th>
                                                     <th className="px-2 py-1 text-left">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {paginatedProducts.map(product => (
-                                                    <tr key={product.id}>
+                                                    <tr key={product.id} className={product.active === false ? "opacity-60" : ""}>
                                                         <td className="px-2 py-1">
                                                             {product.image_url ? (
                                                                 <img src={product.image_url} alt={product.name} className="h-12 w-12 object-cover rounded" />
@@ -992,6 +1186,11 @@ const Admin = () => {
                                                         <td className="px-2 py-1">{product.stock}</td>
                                                         <td className="px-2 py-1">{product.stock_minimo}</td>
                                                         <td className="px-2 py-1">${product.price?.toFixed(2)}</td>
+                                                        <td className="px-2 py-1">
+                                                            <Button size="icon" variant={product.active === false ? "outline" : "ghost"} onClick={() => handleToggleActive(product)} title={product.active === false ? "Activar" : "Desactivar"}>
+                                                                {product.active === false ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-green-500" />}
+                                                            </Button>
+                                                        </td>
                                                         <td className="px-2 py-1">
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
