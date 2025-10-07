@@ -62,6 +62,7 @@ const Products = () => {
       setLoadingProducts(true);
       try {
         // Fetch products first
+        // Fetch products first
         const { data: productsData, error: productsError } = await supabase
           .from('products')
           .select('*');
