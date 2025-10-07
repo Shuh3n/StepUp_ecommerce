@@ -16,6 +16,7 @@ interface ProductFiltersProps {
   selectedSizes: string[];
   onSizeChange: (sizes: string[]) => void;
   onClearFilters: () => void;
+  maxPrice?: number; // Nuevo prop opcional para el precio máximo
 }
 
 const ProductFilters = ({
@@ -29,11 +30,11 @@ const ProductFilters = ({
   selectedSizes,
   onSizeChange,
   onClearFilters,
+  maxPrice = 300000, // Nuevo prop con valor por defecto
 }: ProductFiltersProps) => {
   const [isOpen, setIsOpen] = useState(false);
   
   const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
-  const maxPrice = 150000;
 
   const handleSizeToggle = (size: string) => {
     const newSizes = selectedSizes.includes(size)

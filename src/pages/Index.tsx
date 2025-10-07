@@ -20,15 +20,36 @@ interface CartItem {
   quantity: number;
 }
 
+interface ProductVariant {
+  id_variante: number;
+  id_producto: number;
+  id_talla: number;
+  codigo_sku: string;
+  stock: number;
+  precio_ajuste: number;
+}
+
+interface Product {
+  id: number;
+  name: string;
+  description?: string;
+  price: number;
+  image_url?: string;
+  category: string;
+  created_at?: string;
+  products_variants?: ProductVariant[];
+  variants?: ProductVariant[];
+}
+
 const Index = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
   const { toast } = useToast();
-  const [featuredProducts, setFeaturedProducts] = useState<any[]>([]);
+  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
   useEffect(() => {
@@ -74,11 +95,21 @@ const Index = () => {
       }
     };
     fetchProducts();
-  }, []);
+  }, [toast]);
 
-  const handleAddToCart = (product: any) => {
+  const handleAddToCart = (product: Product) => {
     setCartItems(prev => {
       const existingItem = prev.find(item => item.id === product.id);
+      
+      // Create cart item from product
+      const cartItem: CartItem = {
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        image: product.image_url || '',
+        category: product.category,
+        quantity: 1
+      };
       
       if (existingItem) {
         toast({
@@ -95,7 +126,7 @@ const Index = () => {
           title: "Producto agregado",
           description: `${product.name} se agregó al carrito`,
         });
-        return [...prev, { ...product, quantity: 1 }];
+        return [...prev, cartItem];
       }
     });
   };
@@ -121,7 +152,7 @@ const Index = () => {
     });
   };
 
-  const handleProductClick = (product: any) => {
+  const handleProductClick = (product: Product) => {
     setSelectedProduct(product);
     setIsProductModalOpen(true);
   };
@@ -153,14 +184,14 @@ const Index = () => {
             </div>
 
             {loadingProducts ? (
-              <div className="col-span-4 text-center py-8 text-muted-foreground">Cargando productos...</div>
+              <div className="text-center py-8 text-muted-foreground">Cargando productos...</div>
             ) : featuredProducts.length === 0 ? (
-              <div className="col-span-4 text-center py-8 text-muted-foreground">No hay productos disponibles.</div>
+              <div className="text-center py-8 text-muted-foreground">No hay productos disponibles.</div>
             ) : (
               <ProductGrid products={featuredProducts} onAddToCart={handleAddToCart} />
             )}
 
-            <div className="text-center">
+            <div className="text-center mt-12">
               <Button 
                 variant="hero" 
                 size="lg" 
@@ -186,7 +217,11 @@ const Index = () => {
       <ProductDetailModal
         isOpen={isProductModalOpen}
         onClose={() => setIsProductModalOpen(false)}
-        product={selectedProduct}
+        product={selectedProduct ? {
+          ...selectedProduct,
+          rating: 4.5, // Valor por defecto
+          image: selectedProduct.image_url
+        } : null}
         onAddToCart={handleAddToCart}
       />
 

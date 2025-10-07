@@ -49,67 +49,108 @@ const Products = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 150000]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 300000]); // Valor inicial temporal
   const [sortBy, setSortBy] = useState("newest");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [maxPrice, setMaxPrice] = useState(300000); // Estado para el precio máximo dinámico
 
   // Update the useEffect to fetch only products first
   useEffect(() => {
-    let productsChannel: any = null;
+    let productsChannel: ReturnType<typeof supabase.channel> | null = null;
     const fetchProducts = async () => {
       setLoadingProducts(true);
       try {
-        // Fetch products and their variants with sizes
+        console.log('[DEBUG] Iniciando fetchProducts...');
+        
+        // Primero obtenemos todos los productos (incluyendo los inactivos para debugging)
         const { data: productsData, error: productsError } = await supabase
           .from('products')
-          .select(`
-            id,
-            name,
-            description,
-            price,
-            image_url,
-            category,
-            created_at,
-            products_variants (
-              id_variante,
-              id_producto,
-              id_talla,
-              codigo_sku,
-              stock,
-              precio_ajuste
-            )
-          `);
+          .select('*')
+          .order('id', { ascending: false });
 
-        console.log('[DEBUG] productsData:', productsData);
-        if (productsError) throw productsError;
+        console.log('[DEBUG] Productos obtenidos:', productsData?.length || 0);
+        console.log('[DEBUG] Datos de productos:', productsData);
+        
+        if (productsError) {
+          console.error('[DEBUG] Error al obtener productos:', productsError);
+          throw productsError;
+        }
 
-        // Fetch all sizes
+        if (!productsData || productsData.length === 0) {
+          console.warn('[DEBUG] No se encontraron productos en la base de datos');
+          setProducts([]);
+          return;
+        }
+
+        // Luego obtenemos las variantes para cada producto
+        const { data: variantsData, error: variantsError } = await supabase
+          .from('products_variants')
+          .select('*');
+
+        console.log('[DEBUG] Variantes obtenidas:', variantsData?.length || 0);
+
+        if (variantsError) {
+          console.warn('[DEBUG] Error al obtener variantes:', variantsError);
+          // Continuamos sin variantes si hay error
+        }
+
+        // Obtenemos las tallas
         const { data: sizesData, error: sizesError } = await supabase
           .from('sizes')
           .select('*');
 
-        if (sizesError) throw sizesError;
+        console.log('[DEBUG] Tallas obtenidas:', sizesData?.length || 0);
 
-        // Transform the data to include sizes in variants, handle products without variants
-        const transformedProducts = productsData?.map(product => ({
-          ...product,
-          variants: Array.isArray(product.products_variants)
-            ? product.products_variants.map((variant: ProductVariant) => ({
-                ...variant,
-                size: sizesData.find(size => size.id_talla === variant.id_talla)
-              }))
-            : []
-        })) || [];
+        if (sizesError) {
+          console.warn('[DEBUG] Error al obtener tallas:', sizesError);
+        }
 
+        // Transformamos los datos para incluir variantes y tallas
+        const transformedProducts = productsData.map(product => {
+          const productVariants = variantsData?.filter(v => v.id_producto === product.id) || [];
+          
+          const variantsWithSizes = productVariants.map(variant => ({
+            ...variant,
+            size: sizesData?.find(size => size.id_talla === variant.id_talla) || null
+          }));
+
+          return {
+            ...product,
+            variants: variantsWithSizes
+          };
+        }).filter(product => {
+          // Filtrar solo productos activos (si existe el campo active)
+          // Si no existe el campo, asumir que está activo
+          return product.active !== false;
+        });
+
+        console.log('[DEBUG] Productos transformados:', transformedProducts.length);
+        console.log('[DEBUG] Ejemplo de producto transformado:', transformedProducts[0]);
+        
+        // Calcular precio máximo dinámicamente
+        if (transformedProducts.length > 0) {
+          const calculatedMaxPrice = Math.max(...transformedProducts.map(p => p.price));
+          const roundedMaxPrice = Math.ceil(calculatedMaxPrice / 50000) * 50000; // Redondear hacia arriba a múltiplos de 50k
+          setMaxPrice(roundedMaxPrice);
+          
+          // Solo actualizar el rango de precio si es la primera carga (inicial)
+          if (priceRange[1] === 300000) { // Valor inicial
+            setPriceRange([0, roundedMaxPrice]);
+          }
+          
+          console.log('[DEBUG] Precio máximo calculado:', roundedMaxPrice);
+        }
+        
         setProducts(transformedProducts);
-      } catch (error: any) {
-        console.error('Error fetching products:', error);
+      } catch (error: unknown) {
+        console.error('[DEBUG] Error completo en fetchProducts:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
         toast({ 
           title: 'Error al cargar productos', 
-          description: error.message, 
+          description: errorMessage, 
           variant: 'destructive' 
         });
       } finally {
@@ -137,7 +178,7 @@ const Products = () => {
         supabase.removeChannel(productsChannel);
       }
     };
-  }, [toast]);
+  }, [toast, priceRange]);
 
   const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
 
@@ -145,14 +186,20 @@ const Products = () => {
   const filteredProducts = products.filter(product => {
     const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
+    
+    // Mejorar el filtro de tallas para incluir productos sin variantes
     let sizeMatch = true;
     if (selectedSizes.length > 0) {
       if (product.variants && product.variants.length > 0) {
+        // Si tiene variantes, verificar que al menos una coincida con la talla seleccionada
         sizeMatch = product.variants.some(v => v.size && selectedSizes.includes(v.size.talla) && v.stock > 0);
       } else {
-        sizeMatch = false;
+        // Si no tiene variantes y hay filtros de talla activos, aún mostrar el producto
+        // porque es mejor mostrar productos sin variantes que ocultarlos completamente
+        sizeMatch = true; // Cambiado de false a true para mostrar productos sin variantes
       }
     }
+    
     return categoryMatch && priceMatch && sizeMatch;
   });
 
@@ -224,7 +271,7 @@ const Products = () => {
 
   const handleClearFilters = () => {
     setSelectedCategory("all");
-    setPriceRange([0, 150000]);
+    setPriceRange([0, maxPrice]); // Usar el precio máximo dinámico
     setSelectedSizes([]);
     setSortBy("newest");
   };
@@ -254,8 +301,9 @@ const Products = () => {
               <span className="gradient-text">Todos los</span> Productos
             </h1>
             <p className="text-muted-foreground text-lg">
-              Descubre toda nuestra colección de moda juvenil - {sortedProducts.length} productos encontrados
+              Descubre toda nuestra colección de moda juvenil - {sortedProducts.length} productos encontrados de {products.length} totales
             </p>
+
           </div>
 
           {/* Layout */}
@@ -274,6 +322,7 @@ const Products = () => {
                   selectedSizes={selectedSizes}
                   onSizeChange={setSelectedSizes}
                   onClearFilters={handleClearFilters}
+                  maxPrice={maxPrice} // Pasar el precio máximo dinámico
                 />
               </div>
             </div>

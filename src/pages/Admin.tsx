@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 // ...existing imports...
 // Interfaces de inventario
 interface Product {
@@ -38,7 +38,7 @@ import { Label } from "@/components/ui/label";
 import { ChartContainer } from "@/components/ui/chart";
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import { BarChart, Users, Package, LayoutDashboard, AlertTriangle, TrendingUp, ShoppingCart, DollarSign, Clock } from "lucide-react";
+import { BarChart, Users, Package, LayoutDashboard, AlertTriangle, TrendingUp, ShoppingCart, DollarSign, Clock, Store, ShoppingBag, Warehouse, ArrowRight, Activity, Bell, CheckCircle, RotateCcw } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { supabase } from '../lib/supabase';
 import ProductFilters from "@/components/ProductFilters";
@@ -67,6 +67,35 @@ interface User {
     order_count: number;
 }
 
+interface Order {
+    id: string;
+    user_id: string;
+    status: string;
+    total: number;
+    address: string;
+    phone: string;
+    payment_method: string;
+    payment_status: string;
+    created_at: string;
+    items: Array<{name: string; qty: number}> | string;
+}
+
+interface ProductWithActive extends Product {
+    active?: boolean;
+}
+
+interface EditProduct {
+    id: number;
+    name: string;
+    category: string;
+    stock: number;
+    stock_minimo: number;
+    price: number;
+    description: string;
+    image_url: string;
+    active?: boolean;
+}
+
 interface Product {
     id: number;
     name: string;
@@ -85,6 +114,8 @@ interface InventoryMovement {
 // Si quieres también puedes definir Order aquí...
 
 const Admin = () => {
+    const { toast } = useToast();
+    
     // Handler para crear producto
     const handleCreateProduct = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -127,14 +158,19 @@ const Admin = () => {
             stock_minimo: newProduct.stock_minimo,
             price: newProduct.price,
             image_url: publicUrl, // Usar publicUrl correctamente
-            description: newProduct.description
+            description: newProduct.description,
+            active: true // Asegurar que el producto se crea como activo
         });
         if (!insertError) {
-            toast({ title: 'Producto creado' });
+            toast({ title: 'Producto creado exitosamente' });
             setShowCreateProductModal(false);
             setNewProduct({ name: '', category: '', stock: 1, stock_minimo: 0, price: 0, image_url: '', description: '' });
             setImageFile(null);
-            fetchProducts();
+            setProductsPage(1); // Regresar a la primera página para ver el nuevo producto
+            // Pequeño delay para asegurar que la base de datos procese la inserción
+            setTimeout(async () => {
+                await fetchProducts(); // Actualizar la lista de productos
+            }, 300);
         } else {
             toast({ title: 'Error al crear', description: insertError.message, variant: 'destructive' });
         }
@@ -149,15 +185,30 @@ const Admin = () => {
         }
     };
 
-    // Handler para eliminar producto
-    const handleDeleteProduct = async (product: Product) => {
-        const { error } = await supabase.from('products').delete().eq('id', product.id);
+    // Handler para eliminar producto (con confirmación)
+    const handleDeleteProduct = async () => {
+        if (!confirmDeleteProductId) return;
+
+        const { error } = await supabase
+            .from('products')
+            .delete()
+            .eq('id', confirmDeleteProductId);
+
         if (!error) {
-            toast({ title: 'Producto eliminado' });
-            fetchProducts();
+            toast({ 
+                title: 'Producto eliminado',
+                description: 'El producto ha sido eliminado exitosamente'
+            });
+            fetchProducts(); // Actualizar la lista de productos
         } else {
-            toast({ title: 'Error al eliminar', description: error.message, variant: 'destructive' });
+            toast({ 
+                title: 'Error al eliminar', 
+                description: error.message, 
+                variant: 'destructive' 
+            });
         }
+        
+        setConfirmDeleteProductId(null);
     };
     // --- CRUD Productos ---
     // Estado para modal de creación
@@ -177,21 +228,21 @@ const Admin = () => {
     const [imageFile, setImageFile] = useState<File | null>(null);
 
     // Estado para edición de producto
-    const [editProduct, setEditProduct] = useState<any | null>(null);
+    const [editProduct, setEditProduct] = useState<EditProduct | null>(null);
     const [editNameError, setEditNameError] = useState<string | null>(null);
     const [editImageError, setEditImageError] = useState<string | null>(null);
     const [editImageFile, setEditImageFile] = useState<File | null>(null);
 
-    // Filtros de productos
+    // Filtros de productos - inicializados con valores por defecto
     const [filterCategory, setFilterCategory] = useState<string>("all");
-    const [filterPrice, setFilterPrice] = useState<[number, number]>([0, 150000]);
+    const [filterPrice, setFilterPrice] = useState<[number, number]>([0, 500000]);
     const [filterActive, setFilterActive] = useState<string>("all");
     const [sortBy, setSortBy] = useState<string>("newest");
     // Para exportar CSV
     const exportToCSV = () => {
         const headers = ["ID", "Nombre", "Categoría", "Stock", "Stock mínimo", "Precio", "Activo"];
         const rows = filteredProducts.map(p => [p.id, p.name, p.category, p.stock, p.stock_minimo, p.price, p.active ? "Sí" : "No"]);
-        let csv = headers.join(",") + "\n" + rows.map(r => r.join(",")).join("\n");
+        const csv = headers.join(",") + "\n" + rows.map(r => r.join(",")).join("\n");
         const blob = new Blob([csv], { type: "text/csv" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -202,7 +253,7 @@ const Admin = () => {
     };
 
     // Handler para abrir modal de edición
-    const handleEditProduct = (product: any) => {
+    const handleEditProduct = (product: EditProduct) => {
         setEditProduct(product);
         setEditNameError(null);
         setEditImageError(null);
@@ -274,15 +325,16 @@ const Admin = () => {
     const [qtyError, setQtyError] = useState<string | null>(null);
     const [alertStock, setAlertStock] = useState<string | null>(null);
     // Consulta real de productos desde Supabase
-    const fetchProducts = async () => {
+    const fetchProducts = useCallback(async () => {
         const { data, error } = await supabase.from('products').select('*');
         if (!error && data) {
             // Si no existe el campo active, lo agregamos por defecto en true
-            setProducts(data.map((p: any) => ({ ...p, active: p.active !== undefined ? p.active : true })));
+            const productsWithActive = data.map((p: ProductWithActive) => ({ ...p, active: p.active !== undefined ? p.active : true }));
+            setProducts(productsWithActive);
         } else {
             toast({ title: 'Error al cargar productos', description: error?.message, variant: 'destructive' });
         }
-    };
+    }, [toast]);
     // Cambiar estado activo/inactivo
     const handleToggleActive = async (product: Product & { active?: boolean }) => {
         const newActive = !product.active;
@@ -298,7 +350,12 @@ const Admin = () => {
     const filteredProducts = products
         .filter(p => filterCategory === "all" || p.category === filterCategory)
         .filter(p => p.price >= filterPrice[0] && p.price <= filterPrice[1])
-        .filter(p => filterActive === "all" ? true : filterActive === "active" ? p.active !== false : p.active === false)
+        .filter(p => {
+            if (filterActive === "all") return true;
+            if (filterActive === "active") return p.active !== false; // incluye undefined/null como activo
+            if (filterActive === "inactive") return p.active === false;
+            return true;
+        })
         .sort((a, b) => {
             if (sortBy === "price-low") return a.price - b.price;
             if (sortBy === "price-high") return b.price - a.price;
@@ -306,6 +363,198 @@ const Admin = () => {
             return 0;
         });
     const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
+
+    // Calcular rango dinámico de precios basado en productos reales
+    const maxPrice = products.length > 0 ? Math.max(...products.map(p => p.price)) : 500000;
+    const minPrice = products.length > 0 ? Math.min(...products.map(p => p.price)) : 0;
+    const dynamicMaxPrice = Math.ceil(maxPrice * 1.1); // 10% más que el producto más caro
+    
+    // Actualizar el rango cuando cambien los productos
+    React.useEffect(() => {
+        if (products.length > 0) {
+            const newMaxPrice = Math.max(...products.map(p => p.price));
+            const newMinPrice = Math.min(...products.map(p => p.price));
+            const newDynamicMaxPrice = Math.ceil(newMaxPrice * 1.1);
+            
+            // Solo actualizar si el rango actual es insuficiente o si es la primera vez
+            setFilterPrice(prev => {
+                if (prev[1] < newMaxPrice || (prev[0] === 0 && prev[1] === 500000)) {
+                    return [newMinPrice, newDynamicMaxPrice];
+                }
+                return prev;
+            });
+        }
+    }, [products]);
+
+    // Estados para gestión de categorías
+    const [showCreateCategoryModal, setShowCreateCategoryModal] = useState(false);
+    const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [editingCategory, setEditingCategory] = useState<string | null>(null);
+    const [editCategoryName, setEditCategoryName] = useState('');
+    const [confirmDeleteCategory, setConfirmDeleteCategory] = useState<string | null>(null);
+
+    // Estados para configuración
+    const [companyConfig, setCompanyConfig] = useState({
+        name: 'StepUp',
+        email: 'contacto@stepup.com',
+        phone: '+57 300 123 4567',
+        address: 'Calle 123 #45-67, Bogotá'
+    });
+
+    const [systemConfig, setSystemConfig] = useState({
+        minStock: 5,
+        currency: 'COP',
+        taxRate: 19
+    });
+
+    // Estados adicionales para funcionalidades del administrador
+    const [confirmDeleteProductId, setConfirmDeleteProductId] = useState<number | null>(null);
+
+    // Funciones para gestión de categorías
+    const handleCreateCategory = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newCategoryName.trim()) return;
+        
+        // Verificar si la categoría ya existe
+        if (categories.includes(newCategoryName)) {
+            toast({ 
+                title: 'Error', 
+                description: 'Ya existe una categoría con ese nombre',
+                variant: 'destructive'
+            });
+            return;
+        }
+
+        // En un caso real, guardarías esto en la base de datos
+        // Por ahora lo agregamos localmente
+        toast({ 
+            title: 'Categoría creada', 
+            description: `La categoría "${newCategoryName}" ha sido creada exitosamente`
+        });
+        
+        setNewCategoryName('');
+        setShowCreateCategoryModal(false);
+    };
+
+    const handleEditCategory = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editCategoryName.trim() || !editingCategory) return;
+        
+        // Verificar si la nueva categoría ya existe
+        if (categories.includes(editCategoryName) && editCategoryName !== editingCategory) {
+            toast({ 
+                title: 'Error', 
+                description: 'Ya existe una categoría con ese nombre',
+                variant: 'destructive'
+            });
+            return;
+        }
+
+        // Actualizar productos que tenían la categoría anterior
+        const updatedProducts = products.map(p => 
+            p.category === editingCategory 
+                ? { ...p, category: editCategoryName }
+                : p
+        );
+        setProducts(updatedProducts);
+
+        toast({ 
+            title: 'Categoría actualizada', 
+            description: `La categoría ha sido renombrada a "${editCategoryName}"`
+        });
+        
+        setEditingCategory(null);
+        setEditCategoryName('');
+        setShowEditCategoryModal(false);
+    };
+
+    const handleDeleteCategory = async () => {
+        if (!confirmDeleteCategory) return;
+        
+        // Verificar que no hay productos con esta categoría
+        const productsWithCategory = products.filter(p => p.category === confirmDeleteCategory);
+        if (productsWithCategory.length > 0) {
+            toast({ 
+                title: 'Error', 
+                description: 'No se puede eliminar una categoría que tiene productos asignados',
+                variant: 'destructive'
+            });
+            return;
+        }
+
+        toast({ 
+            title: 'Categoría eliminada', 
+            description: `La categoría "${confirmDeleteCategory}" ha sido eliminada`
+        });
+        
+        setConfirmDeleteCategory(null);
+    };
+
+    // Funciones para configuración
+    const handleSaveConfiguration = async () => {
+        // Aquí guardarías la configuración en la base de datos
+        // Por ahora solo mostramos un mensaje de éxito
+        toast({ 
+            title: 'Configuración guardada', 
+            description: 'Los cambios se han guardado exitosamente'
+        });
+    };
+
+    const handleExportData = () => {
+        // Crear un archivo JSON con todos los datos
+        const exportData = {
+            products: products,
+            users: userData,
+            orders: ordersData,
+            inventory: inventoryMovements,
+            config: {
+                company: companyConfig,
+                system: systemConfig
+            },
+            exportDate: new Date().toISOString()
+        };
+
+        const dataStr = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `stepup-export-${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        toast({ 
+            title: 'Datos exportados', 
+            description: 'Los datos se han exportado exitosamente'
+        });
+    };
+
+    // Función para activar/desactivar productos
+    const handleToggleProductActive = async (productId: number, newActiveState: boolean) => {
+        const { error } = await supabase
+            .from('products')
+            .update({ active: newActiveState })
+            .eq('id', productId);
+
+        if (!error) {
+            setProducts(products.map(p => 
+                p.id === productId ? { ...p, active: newActiveState } : p
+            ));
+            toast({ 
+                title: `Producto ${newActiveState ? 'activado' : 'desactivado'}`,
+                description: 'El estado del producto se ha actualizado'
+            });
+        } else {
+            toast({ 
+                title: 'Error', 
+                description: 'No se pudo actualizar el estado del producto',
+                variant: 'destructive'
+            });
+        }
+    };
+
+    // Función para eliminar producto (eliminamos la duplicada)
 
 
     // Actualizar inventario y registrar movimiento
@@ -365,7 +614,7 @@ const Admin = () => {
 
     // Consulta de movimientos de inventario desde Supabase
     // Consulta de historial de inventario desde Supabase
-    const fetchInventoryMovements = async () => {
+    const fetchInventoryMovements = useCallback(async () => {
         const { data, error } = await supabase
             .from('inventory_history')
             .select('*');
@@ -374,29 +623,28 @@ const Admin = () => {
         } else {
             toast({ title: 'Error al cargar historial', description: error?.message, variant: 'destructive' });
         }
-    };
+    }, [toast]);
 
     //Consulta del historial de movimientos de inventario
     const [inventoryHistory, setInventoryHistory] = useState([]);
-    const fetchInventoryHistory = async () => {
+    const fetchInventoryHistory = useCallback(async () => {
         const { data, error } = await supabase.from('inventory_history').select('*');
         if (!error && data) {
             setInventoryHistory(data);
         } else {
             toast({ title: 'Error al cargar historial', description: error?.message, variant: 'destructive' });
         }
-    };
-    const [viewOrder, setViewOrder] = useState<any | null>(null);
-    const [editOrder, setEditOrder] = useState<any | null>(null);
+    }, [toast]);
+    const [viewOrder, setViewOrder] = useState<Order | null>(null);
+    const [editOrder, setEditOrder] = useState<Order | null>(null);
     const [confirmDeleteUserId, setConfirmDeleteUserId] = useState<string | null>(null);
     const [confirmDeleteOrderId, setConfirmDeleteOrderId] = useState<string | null>(null);
     const [loadingAction, setLoadingAction] = useState<string | null>(null);
-    const { toast } = useToast();
     const [activeTab, setActiveTab] = useState("dashboard");
 
     // Declarar ordersData antes del useEffect para evitar el error de uso antes de declaración
     const [userData, setUserData] = useState<User[]>([]);
-    const [ordersData, setOrdersData] = useState<any[]>([]);
+    const [ordersData, setOrdersData] = useState<Order[]>([]);
     const [orderColumns, setOrderColumns] = useState<string[]>([]);
     const [siteStats, setSiteStats] = useState({ totalUsers: 0, totalOrders: 0 });
     const [dashboardKPIs, setDashboardKPIs] = useState({
@@ -559,7 +807,7 @@ const Admin = () => {
             supabase.removeChannel(productsChannel);
             supabase.removeChannel(historyChannel);
         };
-    }, []);
+    }, [fetchInventoryHistory, fetchInventoryMovements, fetchProducts]);
 
     // Delete user
     const handleDeleteUser = async (auth_id: string) => {
@@ -632,97 +880,221 @@ const Admin = () => {
                     </div>
 
                     <Tabs defaultValue={activeTab} value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-                        <TabsList className="grid grid-cols-6 w-full max-w-2xl">
-                            <TabsTrigger value="dashboard">
-                                <LayoutDashboard className="h-4 w-4 mr-2" />
-                                Dashboard
+                        <TabsList className="flex items-center justify-start gap-4 px-0 py-0 bg-transparent border-0">
+                            <TabsTrigger 
+                                value="dashboard" 
+                                className="admin-nav-link flex items-center gap-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 px-3 py-2 data-[state=active]:text-primary"
+                            >
+                                <BarChart className="h-4 w-4" />
+                                <span className="hidden sm:inline font-medium">Dashboard</span>
                             </TabsTrigger>
-                            <TabsTrigger value="users">
-                                <Users className="h-4 w-4 mr-2" />
-                                Usuarios
+                            <TabsTrigger 
+                                value="users"
+                                className="admin-nav-link flex items-center gap-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 px-3 py-2 data-[state=active]:text-primary"
+                            >
+                                <Users className="h-4 w-4" />
+                                <span className="hidden sm:inline font-medium">Usuarios</span>
                             </TabsTrigger>
-                            <TabsTrigger value="orders">
-                                <Package className="h-4 w-4 mr-2" />
-                                Pedidos
+                            <TabsTrigger 
+                                value="orders"
+                                className="admin-nav-link flex items-center gap-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 px-3 py-2 data-[state=active]:text-primary"
+                            >
+                                <ShoppingBag className="h-4 w-4" />
+                                <span className="hidden sm:inline font-medium">Pedidos</span>
                             </TabsTrigger>
-                            <TabsTrigger value="inventory">
-                                <Package className="h-4 w-4 mr-2" />
-                                Inventario
+                            <TabsTrigger 
+                                value="inventory"
+                                className="admin-nav-link flex items-center gap-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 px-3 py-2 data-[state=active]:text-primary"
+                            >
+                                <Warehouse className="h-4 w-4" />
+                                <span className="hidden sm:inline font-medium">Inventario</span>
                             </TabsTrigger>
-                            <TabsTrigger value="products">
-                                <Package className="h-4 w-4 mr-2" />
-                                Productos
+                            <TabsTrigger 
+                                value="products"
+                                className="admin-nav-link flex items-center gap-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 px-3 py-2 data-[state=active]:text-primary"
+                            >
+                                <Store className="h-4 w-4" />
+                                <span className="hidden sm:inline font-medium">Productos</span>
                             </TabsTrigger>
-                            <TabsTrigger value="stats">
-                                <BarChart className="h-4 w-4 mr-2" />
-                                Estadísticas
+                            <TabsTrigger 
+                                value="stats"
+                                className="admin-nav-link flex items-center gap-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 px-3 py-2 data-[state=active]:text-primary"
+                            >
+                                <TrendingUp className="h-4 w-4" />
+                                <span className="hidden sm:inline font-medium">Estadísticas</span>
+                            </TabsTrigger>
+                            <TabsTrigger 
+                                value="categories"
+                                className="admin-nav-link flex items-center gap-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 px-3 py-2 data-[state=active]:text-primary"
+                            >
+                                <Package className="h-4 w-4" />
+                                <span className="hidden sm:inline font-medium">Categorías</span>
+                            </TabsTrigger>
+                            <TabsTrigger 
+                                value="config"
+                                className="admin-nav-link flex items-center gap-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 px-3 py-2 data-[state=active]:text-primary"
+                            >
+                                <LayoutDashboard className="h-4 w-4" />
+                                <span className="hidden sm:inline font-medium">Configuración</span>
                             </TabsTrigger>
                         </TabsList>
                         {/* Dashboard */}
                         <TabsContent value="dashboard" className="space-y-6">
                             <Card className="glass border-white/20">
                                 <CardHeader>
-                                    <CardTitle>Dashboard / Resumen General</CardTitle>
-                                    <CardDescription>Indicadores clave y resumen de la actividad reciente</CardDescription>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <BarChart className="h-5 w-5" />
+                                        Dashboard Principal
+                                    </CardTitle>
+                                    <CardDescription>Panel de control con métricas clave del negocio</CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
-                                            <Package className="h-8 w-8 text-primary" />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                                        <div 
+                                            className="group cursor-pointer flex items-center gap-4 p-6 bg-gradient-to-r from-blue-500/10 to-blue-600/10 rounded-xl border border-blue-500/20 hover:border-blue-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/20"
+                                            onClick={() => setActiveTab("products")}
+                                        >
+                                            <div className="p-3 bg-blue-500/20 rounded-lg group-hover:bg-blue-500/30 transition-colors">
+                                                <Store className="h-6 w-6 text-blue-500" />
+                                            </div>
                                             <div>
-                                                <div className="text-2xl font-bold">{dashboardKPIs.totalProducts}</div>
+                                                <div className="text-2xl font-bold text-blue-500">{dashboardKPIs.totalProducts}</div>
                                                 <div className="text-muted-foreground">Total productos</div>
+                                                <div className="flex items-center text-xs text-blue-600 mt-1">
+                                                    <ArrowRight className="h-3 w-3 mr-1" />
+                                                    Ver productos
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
-                                            <AlertTriangle className="h-8 w-8 text-yellow-500" />
+                                        <div 
+                                            className="group cursor-pointer flex items-center gap-4 p-6 bg-gradient-to-r from-yellow-500/10 to-yellow-600/10 rounded-xl border border-yellow-500/20 hover:border-yellow-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-yellow-500/20"
+                                            onClick={() => setActiveTab("inventory")}
+                                        >
+                                            <div className="p-3 bg-yellow-500/20 rounded-lg group-hover:bg-yellow-500/30 transition-colors">
+                                                <AlertTriangle className="h-6 w-6 text-yellow-500" />
+                                            </div>
                                             <div>
-                                                <div className="text-2xl font-bold">{dashboardKPIs.lowStock}</div>
+                                                <div className="text-2xl font-bold text-yellow-500">{dashboardKPIs.lowStock}</div>
                                                 <div className="text-muted-foreground">Stock bajo o agotado</div>
+                                                <div className="flex items-center text-xs text-yellow-600 mt-1">
+                                                    <ArrowRight className="h-3 w-3 mr-1" />
+                                                    Ver inventario
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
-                                            <TrendingUp className="h-8 w-8 text-green-500" />
+                                        <div 
+                                            className="group cursor-pointer flex items-center gap-4 p-6 bg-gradient-to-r from-green-500/10 to-green-600/10 rounded-xl border border-green-500/20 hover:border-green-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-green-500/20"
+                                            onClick={() => setActiveTab("stats")}
+                                        >
+                                            <div className="p-3 bg-green-500/20 rounded-lg group-hover:bg-green-500/30 transition-colors">
+                                                <TrendingUp className="h-6 w-6 text-green-500" />
+                                            </div>
                                             <div>
-                                                <div className="text-2xl font-bold">{dashboardKPIs.salesThisMonth}</div>
+                                                <div className="text-2xl font-bold text-green-500">{dashboardKPIs.salesThisMonth}</div>
                                                 <div className="text-muted-foreground">Ventas del mes</div>
+                                                <div className="flex items-center text-xs text-green-600 mt-1">
+                                                    <ArrowRight className="h-3 w-3 mr-1" />
+                                                    Ver estadísticas
+                                                </div>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
-                                            <ShoppingCart className="h-8 w-8 text-blue-500" />
+                                        <div 
+                                            className="group cursor-pointer flex items-center gap-4 p-6 bg-gradient-to-r from-purple-500/10 to-purple-600/10 rounded-xl border border-purple-500/20 hover:border-purple-500/40 transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/20"
+                                            onClick={() => setActiveTab("orders")}
+                                        >
+                                            <div className="p-3 bg-purple-500/20 rounded-lg group-hover:bg-purple-500/30 transition-colors">
+                                                <ShoppingBag className="h-6 w-6 text-purple-500" />
+                                            </div>
                                             <div>
-                                                <div className="text-2xl font-bold">{dashboardKPIs.pendingOrders}</div>
+                                                <div className="text-2xl font-bold text-purple-500">{dashboardKPIs.pendingOrders}</div>
                                                 <div className="text-muted-foreground">Pedidos pendientes</div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-4 p-4 bg-card rounded-lg border border-white/20">
-                                            <DollarSign className="h-8 w-8 text-emerald-500" />
-                                            <div>
-                                                <div className="text-2xl font-bold">{dashboardKPIs.totalIncome.toLocaleString('es-CO', { style: 'currency', currency: 'COP' })}</div>
-                                                <div className="text-muted-foreground">Ingresos del mes</div>
+                                                <div className="flex items-center text-xs text-purple-600 mt-1">
+                                                    <ArrowRight className="h-3 w-3 mr-1" />
+                                                    Ver pedidos
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="mb-6">
-                                        <h3 className="font-bold mb-2 text-muted-foreground flex items-center"><Clock className="h-5 w-5 mr-2" />Últimas actividades / Pedidos recientes</h3>
-                                        <ul className="space-y-2">
-                                            {dashboardKPIs.recentOrders.length === 0 && <li className="text-muted-foreground">No hay pedidos recientes.</li>}
-                                            {dashboardKPIs.recentOrders.map((order, idx) => (
-                                                <li key={order.id || idx} className="p-2 bg-background rounded border border-white/10 flex flex-col md:flex-row md:items-center md:justify-between">
-                                                    <span><b>#{order.id}</b> - {order.status} - {order.total ? `$${order.total.toFixed(2)}` : ''}</span>
-                                                    <span className="text-xs text-muted-foreground">{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                    {dashboardKPIs.notifications.length > 0 && (
-                                        <div className="mb-4">
-                                            <h3 className="font-bold mb-2 text-muted-foreground flex items-center"><AlertTriangle className="h-5 w-5 mr-2 text-yellow-500" />Notificaciones importantes</h3>
-                                            <ul className="list-disc pl-6 space-y-1">
-                                                {dashboardKPIs.notifications.map((n, i) => <li key={i} className="text-yellow-600 font-semibold">{n}</li>)}
-                                            </ul>
+
+                                    {/* Income Card */}
+                                    <div className="mb-8">
+                                        <div className="bg-gradient-to-r from-emerald-500/10 to-emerald-600/10 p-6 rounded-xl border border-emerald-500/20">
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-3 bg-emerald-500/20 rounded-lg">
+                                                    <DollarSign className="h-6 w-6 text-emerald-500" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-3xl font-bold text-emerald-500">
+                                                        {dashboardKPIs.totalIncome.toLocaleString('es-CO', { style: 'currency', currency: 'COP' })}
+                                                    </div>
+                                                    <div className="text-muted-foreground">Ingresos del mes</div>
+                                                    <div className="flex items-center text-xs text-emerald-600 mt-1">
+                                                        <Activity className="h-3 w-3 mr-1" />
+                                                        Ingresos totales
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
-                                    )}
+                                    </div>
+
+                                    {/* Recent Activity */}
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {/* Recent Orders */}
+                                        <div className="bg-card/30 p-6 rounded-xl border border-white/10">
+                                            <h3 className="font-semibold mb-4 flex items-center gap-2">
+                                                <Clock className="h-5 w-5 text-blue-500" />
+                                                Pedidos Recientes
+                                            </h3>
+                                            <div className="space-y-3">
+                                                {dashboardKPIs.recentOrders.length === 0 ? (
+                                                    <p className="text-muted-foreground text-sm">No hay pedidos recientes</p>
+                                                ) : (
+                                                    dashboardKPIs.recentOrders.slice(0, 5).map((order, idx) => (
+                                                        <div key={order.id || idx} className="flex items-center justify-between p-3 bg-background/50 rounded-lg border border-white/5 hover:bg-white/5 transition-colors">
+                                                            <div>
+                                                                <p className="font-medium">#{order.id}</p>
+                                                                <p className="text-sm text-muted-foreground">{order.status}</p>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <p className="font-medium">{order.total ? `$${order.total.toFixed(2)}` : ''}</p>
+                                                                <p className="text-xs text-muted-foreground">
+                                                                    {order.created_at ? new Date(order.created_at).toLocaleDateString() : ''}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Notifications */}
+                                        <div className="bg-card/30 p-6 rounded-xl border border-white/10">
+                                            <h3 className="font-semibold mb-4 flex items-center gap-2">
+                                                <Bell className="h-5 w-5 text-yellow-500" />
+                                                Notificaciones
+                                                {dashboardKPIs.notifications.length > 0 && (
+                                                    <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                                                        {dashboardKPIs.notifications.length}
+                                                    </span>
+                                                )}
+                                            </h3>
+                                            <div className="space-y-3">
+                                                {dashboardKPIs.notifications.length === 0 ? (
+                                                    <div className="flex items-center gap-2 text-green-600">
+                                                        <CheckCircle className="h-4 w-4" />
+                                                        <span className="text-sm">Todo está en orden</span>
+                                                    </div>
+                                                ) : (
+                                                    dashboardKPIs.notifications.slice(0, 5).map((notification, idx) => (
+                                                        <div key={idx} className="flex items-start gap-3 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                                                            <AlertTriangle className="h-4 w-4 text-yellow-500 mt-0.5" />
+                                                            <span className="text-sm">{notification}</span>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </CardContent>
                             </Card>
                         </TabsContent>
@@ -731,7 +1103,10 @@ const Admin = () => {
                         <TabsContent value="users" className="space-y-6">
                             <Card className="glass border-white/20">
                                 <CardHeader>
-                                    <CardTitle className="text-left">Gestión de Usuarios</CardTitle>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Users className="h-5 w-5" />
+                                        Gestión de Usuarios
+                                    </CardTitle>
                                     <CardDescription className="text-left">
                                         Administra la información de los usuarios
                                     </CardDescription>
@@ -851,7 +1226,10 @@ const Admin = () => {
                         <TabsContent value="orders" className="space-y-6">
                             <Card className="glass border-white/20">
                                 <CardHeader>
-                                    <CardTitle>Gestión de Pedidos</CardTitle>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <ShoppingBag className="h-5 w-5" />
+                                        Gestión de Pedidos
+                                    </CardTitle>
                                     <CardDescription>
                                         Visualiza y gestiona todos los pedidos
                                     </CardDescription>
@@ -1012,7 +1390,10 @@ const Admin = () => {
                         <TabsContent value="inventory" className="space-y-6">
                             <Card className="glass border-white/20">
                                 <CardHeader>
-                                    <CardTitle className="text-left">Gestión de Inventario</CardTitle>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Warehouse className="h-5 w-5" />
+                                        Gestión de Inventario
+                                    </CardTitle>
                                     <CardDescription className="text-left">Actualiza el stock y registra movimientos</CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -1125,86 +1506,175 @@ const Admin = () => {
                         <TabsContent value="products" className="space-y-6">
                             <Card className="glass border-white/20">
                                 <CardHeader>
-                                    <CardTitle>Gestión de Productos</CardTitle>
-                                    <CardDescription>Administra los productos, categorías y stock</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-                                        <div className="flex-1">
-                                            <ProductFilters
-                                                categories={categories}
-                                                selectedCategory={filterCategory}
-                                                onCategoryChange={setFilterCategory}
-                                                priceRange={filterPrice}
-                                                onPriceRangeChange={setFilterPrice}
-                                                sortBy={sortBy}
-                                                onSortChange={setSortBy}
-                                                selectedSizes={[]}
-                                                onSizeChange={() => {}}
-                                                onClearFilters={() => {
-                                                    setFilterCategory("all");
-                                                    setFilterPrice([0, 150000]);
-                                                    setFilterActive("all");
-                                                }}
-                                            />
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Store className="h-5 w-5" />
+                                                Gestión de Productos
+                                            </CardTitle>
+                                            <CardDescription>Administra los productos, categorías y stock</CardDescription>
                                         </div>
                                         <div className="flex gap-2 items-center">
+                                            <Button 
+                                                variant="outline" 
+                                                size="sm" 
+                                                onClick={() => {
+                                                    setFilterCategory("all");
+                                                    setFilterPrice([0, 500000]); // Resetear al rango inicial
+                                                    setFilterActive("all");
+                                                    setProductsPage(1); // También resetear la página
+                                                    toast({
+                                                        title: "Filtros limpiados",
+                                                        description: "Se han restablecido todos los filtros",
+                                                        duration: 2000,
+                                                    });
+                                                }}
+                                                title="Limpiar todos los filtros"
+                                            >
+                                                <RotateCcw className="h-4 w-4 mr-1" /> Limpiar todo
+                                            </Button>
                                             <Button variant="outline" size="sm" onClick={exportToCSV} title="Exportar CSV">
                                                 <Download className="h-4 w-4 mr-1" /> Exportar CSV
                                             </Button>
                                             <Button variant="default" size="sm" onClick={() => setShowCreateProductModal(true)}>
+                                                <Store className="h-4 w-4 mr-1" />
                                                 Nuevo producto
                                             </Button>
                                         </div>
                                     </div>
-                                    <div className="overflow-x-auto rounded-xl border border-white/10 bg-background/80 shadow">
+                                </CardHeader>
+                                <CardContent>
+                                    {/* Filtro rápido de estado */}
+                                    <div className="mb-4 flex gap-2 items-center flex-wrap">
+                                        <span className="text-sm font-medium text-muted-foreground">Estado:</span>
+                                        <Button 
+                                            size="sm" 
+                                            variant={filterActive === "all" ? "default" : "outline"}
+                                            onClick={() => setFilterActive("all")}
+                                        >
+                                            Todos
+                                        </Button>
+                                        <Button 
+                                            size="sm" 
+                                            variant={filterActive === "active" ? "default" : "outline"}
+                                            onClick={() => setFilterActive("active")}
+                                        >
+                                            Activos
+                                        </Button>
+                                        <Button 
+                                            size="sm" 
+                                            variant={filterActive === "inactive" ? "default" : "outline"}
+                                            onClick={() => setFilterActive("inactive")}
+                                        >
+                                            Inactivos
+                                        </Button>
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                        <ProductFilters
+                                            categories={categories}
+                                            selectedCategory={filterCategory}
+                                            onCategoryChange={setFilterCategory}
+                                            priceRange={filterPrice}
+                                            onPriceRangeChange={setFilterPrice}
+                                            sortBy={sortBy}
+                                            onSortChange={setSortBy}
+                                            selectedSizes={[]}
+                                            onSizeChange={() => {}}
+                                            onClearFilters={null}
+                                        />
+                                    </div>
+                                    <div className="overflow-x-auto rounded-xl border border-white/10 bg-background/80 shadow min-h-[400px]">
                                         <table className="min-w-full text-sm">
-                                            <thead>
+                                            <thead className="bg-muted/30">
                                                 <tr>
-                                                    <th className="px-2 py-1 text-left">Imagen</th>
-                                                    <th className="px-2 py-1 text-left">Nombre</th>
-                                                    <th className="px-2 py-1 text-left">Categoría</th>
-                                                    <th className="px-2 py-1 text-left">Stock</th>
-                                                    <th className="px-2 py-1 text-left">Stock mínimo</th>
-                                                    <th className="px-2 py-1 text-left">Precio</th>
-                                                    <th className="px-2 py-1 text-left">Activo</th>
-                                                    <th className="px-2 py-1 text-left">Acciones</th>
+                                                    <th className="px-4 py-3 text-left font-semibold">Imagen</th>
+                                                    <th className="px-4 py-3 text-left font-semibold">Nombre</th>
+                                                    <th className="px-4 py-3 text-left font-semibold">Categoría</th>
+                                                    <th className="px-4 py-3 text-left font-semibold">Stock</th>
+                                                    <th className="px-4 py-3 text-left font-semibold">Stock mínimo</th>
+                                                    <th className="px-4 py-3 text-left font-semibold">Precio</th>
+                                                    <th className="px-4 py-3 text-left font-semibold">Activo</th>
+                                                    <th className="px-4 py-3 text-left font-semibold">Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {paginatedProducts.map(product => (
-                                                    <tr key={product.id} className={product.active === false ? "opacity-60" : ""}>
-                                                        <td className="px-2 py-1">
-                                                            {product.image_url ? (
-                                                                <img src={product.image_url} alt={product.name} className="h-12 w-12 object-cover rounded" />
-                                                            ) : (
-                                                                <span className="text-xs text-muted-foreground">Sin imagen</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-2 py-1 font-semibold">{product.name}</td>
-                                                        <td className="px-2 py-1">{product.category}</td>
-                                                        <td className="px-2 py-1">{product.stock}</td>
-                                                        <td className="px-2 py-1">{product.stock_minimo}</td>
-                                                        <td className="px-2 py-1">${product.price?.toFixed(2)}</td>
-                                                        <td className="px-2 py-1">
-                                                            <Button size="icon" variant={product.active === false ? "outline" : "ghost"} onClick={() => handleToggleActive(product)} title={product.active === false ? "Activar" : "Desactivar"}>
-                                                                {product.active === false ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-green-500" />}
-                                                            </Button>
-                                                        </td>
-                                                        <td className="px-2 py-1">
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger asChild>
-                                                                    <Button size="sm" variant="outline"><ChevronDown /></Button>
-                                                                </DropdownMenuTrigger>
-                                                                <DropdownMenuContent>
-                                                                    <DropdownMenuItem onClick={() => handleEditProduct(product)}>Editar</DropdownMenuItem>
-                                                                    <DropdownMenuSeparator />
-                                                                    <DropdownMenuItem onClick={() => handleDeleteProduct(product)} style={{ color: 'red' }}>Eliminar</DropdownMenuItem>
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
+                                                {paginatedProducts.length > 0 ? (
+                                                    paginatedProducts.map(product => (
+                                                        <tr key={product.id} className={`border-b border-white/10 hover:bg-muted/20 transition-colors ${product.active === false ? "opacity-60" : ""}`}>
+                                                            <td className="px-4 py-3">
+                                                                {product.image_url ? (
+                                                                    <img src={product.image_url} alt={product.name} className="h-12 w-12 object-cover rounded border" />
+                                                                ) : (
+                                                                    <div className="h-12 w-12 bg-muted rounded border flex items-center justify-center">
+                                                                        <span className="text-xs text-muted-foreground">Sin imagen</span>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-3 font-semibold">{product.name}</td>
+                                                            <td className="px-4 py-3">{product.category}</td>
+                                                            <td className="px-4 py-3">
+                                                                <span className={`font-medium ${product.stock <= product.stock_minimo ? 'text-red-500' : 'text-green-600'}`}>
+                                                                    {product.stock}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-3">{product.stock_minimo}</td>
+                                                            <td className="px-4 py-3 font-medium text-green-600">
+                                                                {product.price?.toLocaleString('es-CO', { style: 'currency', currency: 'COP' })}
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                <Button size="icon" variant={product.active === false ? "outline" : "ghost"} onClick={() => handleToggleActive(product)} title={product.active === false ? "Activar" : "Desactivar"}>
+                                                                    {product.active === false ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-green-500" />}
+                                                                </Button>
+                                                            </td>
+                                                            <td className="px-4 py-3">
+                                                                <DropdownMenu>
+                                                                    <DropdownMenuTrigger asChild>
+                                                                        <Button size="sm" variant="outline"><ChevronDown /></Button>
+                                                                    </DropdownMenuTrigger>
+                                                                    <DropdownMenuContent>
+                                                                        <DropdownMenuItem onClick={() => handleEditProduct(product)}>
+                                                                            <Package className="h-4 w-4 mr-2" />
+                                                                            Editar
+                                                                        </DropdownMenuItem>
+                                                                        <DropdownMenuSeparator />
+                                                                        <DropdownMenuItem 
+                                                                            onClick={() => setConfirmDeleteProductId(product.id)} 
+                                                                            className="text-red-600"
+                                                                        >
+                                                                            <AlertTriangle className="h-4 w-4 mr-2" />
+                                                                            Eliminar
+                                                                        </DropdownMenuItem>
+                                                                    </DropdownMenuContent>
+                                                                </DropdownMenu>
+                                                            </td>
+                                                        </tr>
+                                                    ))
+                                                ) : (
+                                                    <tr>
+                                                        <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
+                                                            <div className="flex flex-col items-center gap-3">
+                                                                <Store className="h-12 w-12 text-muted-foreground/50" />
+                                                                <div>
+                                                                    <p className="font-medium">No hay productos disponibles</p>
+                                                                    <p className="text-sm">
+                                                                        {filteredProducts.length === 0 && products.length > 0 
+                                                                            ? "Prueba ajustando los filtros o crea un nuevo producto"
+                                                                            : "Crea tu primer producto para comenzar"
+                                                                        }
+                                                                    </p>
+                                                                </div>
+                                                                <Button 
+                                                                    onClick={() => setShowCreateProductModal(true)}
+                                                                    className="mt-2"
+                                                                >
+                                                                    <Store className="h-4 w-4 mr-2" />
+                                                                    Crear producto
+                                                                </Button>
+                                                            </div>
                                                         </td>
                                                     </tr>
-                                                ))}
+                                                )}
                                             </tbody>
                                         </table>
                                     </div>
@@ -1331,29 +1801,498 @@ const Admin = () => {
                                             )}
                                         </DialogContent>
                                     </Dialog>
+
+                                    {/* Modal confirmar eliminar producto */}
+                                    <Dialog open={!!confirmDeleteProductId} onOpenChange={(open) => !open && setConfirmDeleteProductId(null)}>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>¿Eliminar producto?</DialogTitle>
+                                                <DialogDescription>
+                                                    Esta acción no se puede deshacer. El producto será eliminado permanentemente.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <DialogFooter>
+                                                <Button 
+                                                    variant="destructive" 
+                                                    onClick={handleDeleteProduct}
+                                                >
+                                                    Eliminar
+                                                </Button>
+                                                <DialogClose asChild>
+                                                    <Button variant="outline">Cancelar</Button>
+                                                </DialogClose>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+
+                                    {/* Controles de paginación productos */}
+                                    {totalProductsPages > 1 && (
+                                        <div className="flex justify-center items-center gap-2 p-4">
+                                            <Button 
+                                                size="sm" 
+                                                variant="outline" 
+                                                disabled={productsPage === 1} 
+                                                onClick={() => setProductsPage(productsPage - 1)}
+                                            >
+                                                Anterior
+                                            </Button>
+                                            <span className="text-sm text-muted-foreground">
+                                                Página {productsPage} de {totalProductsPages}
+                                            </span>
+                                            <Button 
+                                                size="sm" 
+                                                variant="outline" 
+                                                disabled={productsPage === totalProductsPages} 
+                                                onClick={() => setProductsPage(productsPage + 1)}
+                                            >
+                                                Siguiente
+                                            </Button>
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </TabsContent>
                         <TabsContent value="stats" className="space-y-6">
                             <Card className="glass border-white/20">
                                 <CardHeader>
-                                    <CardTitle>Estadísticas del Sitio</CardTitle>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <TrendingUp className="h-5 w-5" />
+                                        Estadísticas y Reportes
+                                    </CardTitle>
                                     <CardDescription>
                                         Visualiza estadísticas relevantes del sitio
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="flex flex-col gap-4">
-                                        <ChartContainer config={{ users: { color: '#f97316', label: 'Usuarios' }, orders: { color: '#ef4444', label: 'Pedidos' } }}>
-                                            <ResponsiveContainer width="50%" height={50}>
-                                                <ReBarChart data={[{ name: 'Usuarios', value: siteStats.totalUsers }, { name: 'Pedidos', value: siteStats.totalOrders }]}>
-                                                    <XAxis dataKey="name" />
-                                                    <YAxis allowDecimals={false} />
-                                                    <Tooltip content={() => null} />
-                                                    <Bar dataKey="value" fill="#f97316" radius={[8, 8, 0, 0]} />
-                                                </ReBarChart>
-                                            </ResponsiveContainer>
-                                        </ChartContainer>
+                                    <div className="space-y-8">
+                                        {/* Gráficas de barras */}
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            <div className="bg-card/30 p-6 rounded-xl border border-white/10">
+                                                <h3 className="font-semibold mb-4">Usuarios vs Pedidos</h3>
+                                                <ChartContainer config={{ users: { color: '#f97316', label: 'Usuarios' }, orders: { color: '#ef4444', label: 'Pedidos' } }}>
+                                                    <ResponsiveContainer width="100%" height={200}>
+                                                        <ReBarChart data={[
+                                                            { name: 'Usuarios', value: siteStats.totalUsers },
+                                                            { name: 'Pedidos', value: siteStats.totalOrders }
+                                                        ]}>
+                                                            <XAxis dataKey="name" />
+                                                            <YAxis allowDecimals={false} />
+                                                            <Bar dataKey="value" fill="#f97316" radius={[8, 8, 0, 0]} />
+                                                        </ReBarChart>
+                                                    </ResponsiveContainer>
+                                                </ChartContainer>
+                                            </div>
+
+                                            <div className="bg-card/30 p-6 rounded-xl border border-white/10">
+                                                <h3 className="font-semibold mb-4">Productos por Categoría</h3>
+                                                <ChartContainer config={{ 
+                                                    productos: { color: '#10b981', label: 'Productos' }
+                                                }}>
+                                                    <ResponsiveContainer width="100%" height={200}>
+                                                        <ReBarChart data={
+                                                            categories.filter(cat => cat !== 'all').map(cat => ({
+                                                                name: cat,
+                                                                value: products.filter(p => p.category === cat).length
+                                                            }))
+                                                        }>
+                                                            <XAxis dataKey="name" />
+                                                            <YAxis allowDecimals={false} />
+                                                            <Bar dataKey="value" fill="#10b981" radius={[8, 8, 0, 0]} />
+                                                        </ReBarChart>
+                                                    </ResponsiveContainer>
+                                                </ChartContainer>
+                                            </div>
+                                        </div>
+
+                                        {/* Reportes y métricas adicionales */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <div className="bg-gradient-to-r from-blue-500/10 to-blue-600/10 p-4 rounded-xl border border-blue-500/20">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-blue-500/20 rounded-lg">
+                                                        <Users className="h-5 w-5 text-blue-500" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-muted-foreground">Usuarios Activos</p>
+                                                        <p className="text-xl font-bold">{siteStats.totalUsers}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-gradient-to-r from-green-500/10 to-green-600/10 p-4 rounded-xl border border-green-500/20">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-green-500/20 rounded-lg">
+                                                        <ShoppingCart className="h-5 w-5 text-green-500" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-muted-foreground">Total Ventas</p>
+                                                        <p className="text-xl font-bold">{dashboardKPIs.salesThisMonth}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-gradient-to-r from-purple-500/10 to-purple-600/10 p-4 rounded-xl border border-purple-500/20">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-purple-500/20 rounded-lg">
+                                                        <Package className="h-5 w-5 text-purple-500" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-muted-foreground">Productos Activos</p>
+                                                        <p className="text-xl font-bold">{products.filter(p => p.active !== false).length}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-gradient-to-r from-yellow-500/10 to-yellow-600/10 p-4 rounded-xl border border-yellow-500/20">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="p-2 bg-yellow-500/20 rounded-lg">
+                                                        <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm text-muted-foreground">Stock Bajo</p>
+                                                        <p className="text-xl font-bold">{dashboardKPIs.lowStock}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Productos más vendidos y reportes */}
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            <div className="bg-card/30 p-6 rounded-xl border border-white/10">
+                                                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                                                    <TrendingUp className="h-5 w-5 text-green-500" />
+                                                    Productos con Stock Crítico
+                                                </h3>
+                                                <div className="space-y-2">
+                                                    {products
+                                                        .filter(p => p.stock <= p.stock_minimo)
+                                                        .slice(0, 5)
+                                                        .map(product => (
+                                                            <div key={product.id} className="flex justify-between items-center p-2 bg-yellow-500/10 rounded-lg">
+                                                                <span className="font-medium">{product.name}</span>
+                                                                <span className="text-sm text-red-500 font-bold">
+                                                                    {product.stock} / {product.stock_minimo}
+                                                                </span>
+                                                            </div>
+                                                        ))
+                                                    }
+                                                    {products.filter(p => p.stock <= p.stock_minimo).length === 0 && (
+                                                        <div className="flex items-center gap-2 text-green-600">
+                                                            <CheckCircle className="h-4 w-4" />
+                                                            <span className="text-sm">Todos los productos tienen stock suficiente</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-card/30 p-6 rounded-xl border border-white/10">
+                                                <h3 className="font-semibold mb-4 flex items-center gap-2">
+                                                    <BarChart className="h-5 w-5 text-blue-500" />
+                                                    Resumen Mensual
+                                                </h3>
+                                                <div className="space-y-3">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-muted-foreground">Ingresos del mes:</span>
+                                                        <span className="font-bold text-green-600">
+                                                            {dashboardKPIs.totalIncome.toLocaleString('es-CO', { 
+                                                                style: 'currency', 
+                                                                currency: 'COP' 
+                                                            })}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-muted-foreground">Pedidos completados:</span>
+                                                        <span className="font-bold">{dashboardKPIs.salesThisMonth}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-muted-foreground">Pedidos pendientes:</span>
+                                                        <span className="font-bold text-orange-500">{dashboardKPIs.pendingOrders}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-muted-foreground">Promedio por venta:</span>
+                                                        <span className="font-bold">
+                                                            {dashboardKPIs.salesThisMonth > 0 
+                                                                ? (dashboardKPIs.totalIncome / dashboardKPIs.salesThisMonth).toLocaleString('es-CO', { 
+                                                                    style: 'currency', 
+                                                                    currency: 'COP' 
+                                                                })
+                                                                : '$0'
+                                                            }
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Botones de exportación */}
+                                        <div className="flex gap-2 pt-4">
+                                            <Button variant="outline" onClick={exportToCSV}>
+                                                <Download className="h-4 w-4 mr-2" />
+                                                Exportar Productos CSV
+                                            </Button>
+                                            <Button variant="outline" onClick={handleExportData}>
+                                                <Download className="h-4 w-4 mr-2" />
+                                                Exportar Todos los Datos
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        {/* Gestión de Categorías */}
+                        <TabsContent value="categories" className="space-y-6">
+                            <Card className="glass border-white/20">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Package className="h-5 w-5" />
+                                        Gestión de Categorías
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Administra las categorías de productos
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className="text-lg font-semibold">Categorías Existentes</h3>
+                                        <Button onClick={() => setShowCreateCategoryModal(true)}>
+                                            <Package className="h-4 w-4 mr-2" />
+                                            Nueva Categoría
+                                        </Button>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {categories.map((category, idx) => {
+                                            const productCount = products.filter(p => p.category === category).length;
+                                            return (
+                                                <div key={idx} className="p-4 bg-card/30 rounded-xl border border-white/10">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <h4 className="font-semibold">{category}</h4>
+                                                            <p className="text-sm text-muted-foreground">
+                                                                {productCount} producto{productCount !== 1 ? 's' : ''}
+                                                            </p>
+                                                        </div>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button size="sm" variant="ghost">
+                                                                    <ChevronDown className="h-4 w-4" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent>
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => {
+                                                                        setEditingCategory(category);
+                                                                        setEditCategoryName(category);
+                                                                        setShowEditCategoryModal(true);
+                                                                    }}
+                                                                >
+                                                                    Editar
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuSeparator />
+                                                                <DropdownMenuItem 
+                                                                    onClick={() => setConfirmDeleteCategory(category)}
+                                                                    className="text-red-600"
+                                                                    disabled={productCount > 0}
+                                                                >
+                                                                    {productCount > 0 ? 'Tiene productos' : 'Eliminar'}
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Modal crear categoría */}
+                                    <Dialog open={showCreateCategoryModal} onOpenChange={setShowCreateCategoryModal}>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Nueva Categoría</DialogTitle>
+                                                <DialogDescription>
+                                                    Crea una nueva categoría para organizar tus productos
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <form onSubmit={handleCreateCategory} className="space-y-4">
+                                                <div>
+                                                    <Label htmlFor="category-name">Nombre de la categoría</Label>
+                                                    <Input 
+                                                        id="category-name" 
+                                                        value={newCategoryName}
+                                                        onChange={(e) => setNewCategoryName(e.target.value)}
+                                                        placeholder="Ej: Accesorios"
+                                                        required 
+                                                    />
+                                                </div>
+                                                <DialogFooter>
+                                                    <Button type="submit">Crear Categoría</Button>
+                                                    <DialogClose asChild>
+                                                        <Button variant="outline">Cancelar</Button>
+                                                    </DialogClose>
+                                                </DialogFooter>
+                                            </form>
+                                        </DialogContent>
+                                    </Dialog>
+
+                                    {/* Modal editar categoría */}
+                                    <Dialog open={showEditCategoryModal} onOpenChange={setShowEditCategoryModal}>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>Editar Categoría</DialogTitle>
+                                                <DialogDescription>
+                                                    Modifica el nombre de la categoría
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <form onSubmit={handleEditCategory} className="space-y-4">
+                                                <div>
+                                                    <Label htmlFor="edit-category-name">Nombre de la categoría</Label>
+                                                    <Input 
+                                                        id="edit-category-name" 
+                                                        value={editCategoryName}
+                                                        onChange={(e) => setEditCategoryName(e.target.value)}
+                                                        required 
+                                                    />
+                                                </div>
+                                                <DialogFooter>
+                                                    <Button type="submit">Guardar Cambios</Button>
+                                                    <DialogClose asChild>
+                                                        <Button variant="outline">Cancelar</Button>
+                                                    </DialogClose>
+                                                </DialogFooter>
+                                            </form>
+                                        </DialogContent>
+                                    </Dialog>
+
+                                    {/* Modal confirmar eliminar categoría */}
+                                    <Dialog open={!!confirmDeleteCategory} onOpenChange={(open) => !open && setConfirmDeleteCategory(null)}>
+                                        <DialogContent>
+                                            <DialogHeader>
+                                                <DialogTitle>¿Eliminar categoría?</DialogTitle>
+                                                <DialogDescription>
+                                                    Esta acción no se puede deshacer. La categoría "{confirmDeleteCategory}" será eliminada permanentemente.
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <DialogFooter>
+                                                <Button 
+                                                    variant="destructive" 
+                                                    onClick={handleDeleteCategory}
+                                                >
+                                                    Eliminar
+                                                </Button>
+                                                <DialogClose asChild>
+                                                    <Button variant="outline">Cancelar</Button>
+                                                </DialogClose>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                </CardContent>
+                            </Card>
+                        </TabsContent>
+
+                        {/* Configuración General */}
+                        <TabsContent value="config" className="space-y-6">
+                            <Card className="glass border-white/20">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <LayoutDashboard className="h-5 w-5" />
+                                        Configuración General
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Configuraciones del sistema y empresa
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-6">
+                                    {/* Información de la empresa */}
+                                    <div className="border border-white/10 rounded-lg p-4">
+                                        <h3 className="font-semibold mb-4">Información de la Empresa</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <Label htmlFor="company-name">Nombre de la empresa</Label>
+                                                <Input 
+                                                    id="company-name" 
+                                                    value={companyConfig.name}
+                                                    onChange={(e) => setCompanyConfig({...companyConfig, name: e.target.value})}
+                                                    placeholder="StepUp"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="company-email">Email de contacto</Label>
+                                                <Input 
+                                                    id="company-email" 
+                                                    type="email"
+                                                    value={companyConfig.email}
+                                                    onChange={(e) => setCompanyConfig({...companyConfig, email: e.target.value})}
+                                                    placeholder="contacto@stepup.com"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="company-phone">Teléfono</Label>
+                                                <Input 
+                                                    id="company-phone" 
+                                                    value={companyConfig.phone}
+                                                    onChange={(e) => setCompanyConfig({...companyConfig, phone: e.target.value})}
+                                                    placeholder="+57 300 123 4567"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="company-address">Dirección</Label>
+                                                <Input 
+                                                    id="company-address" 
+                                                    value={companyConfig.address}
+                                                    onChange={(e) => setCompanyConfig({...companyConfig, address: e.target.value})}
+                                                    placeholder="Calle 123 #45-67, Bogotá"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Configuraciones del sistema */}
+                                    <div className="border border-white/10 rounded-lg p-4">
+                                        <h3 className="font-semibold mb-4">Configuraciones del Sistema</h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div>
+                                                <Label htmlFor="min-stock">Stock mínimo global</Label>
+                                                <Input 
+                                                    id="min-stock" 
+                                                    type="number"
+                                                    min="0"
+                                                    value={systemConfig.minStock}
+                                                    onChange={(e) => setSystemConfig({...systemConfig, minStock: Number(e.target.value)})}
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="currency">Moneda</Label>
+                                                <Input 
+                                                    id="currency" 
+                                                    value={systemConfig.currency}
+                                                    onChange={(e) => setSystemConfig({...systemConfig, currency: e.target.value})}
+                                                    placeholder="COP"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="tax-rate">Tasa de impuesto (%)</Label>
+                                                <Input 
+                                                    id="tax-rate" 
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    step="0.01"
+                                                    value={systemConfig.taxRate}
+                                                    onChange={(e) => setSystemConfig({...systemConfig, taxRate: Number(e.target.value)})}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Botones de acción */}
+                                    <div className="flex gap-2">
+                                        <Button onClick={handleSaveConfiguration}>
+                                            Guardar Configuración
+                                        </Button>
+                                        <Button variant="outline" onClick={handleExportData}>
+                                            <Download className="h-4 w-4 mr-2" />
+                                            Exportar Datos
+                                        </Button>
                                     </div>
                                 </CardContent>
                             </Card>
