@@ -45,15 +45,18 @@ export interface CartItem {
 
 const Products = () => {
   const navigate = useNavigate();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 150000]);
-  const [sortBy, setSortBy] = useState("newest");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  
+  // Cambiar el rango de precio por defecto para incluir todos los productos
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000000]); // Aumentar a 1 millón
+  
+  const [sortBy, setSortBy] = useState("newest");
   const { toast } = useToast();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
 
   // First, define categories
   const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
@@ -62,10 +65,13 @@ const Products = () => {
   const filteredProducts = products.filter(product => {
     const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
+    
+    // Modificar esta línea para que si no hay selectedSizes, muestre todos los productos
     const sizeMatch = selectedSizes.length === 0 || 
       product.variants?.some(v => 
         v.size && selectedSizes.includes(v.size.nombre_talla?.trim() || '') && v.stock > 0
-      ) || false;
+      );
+      
     return categoryMatch && priceMatch && sizeMatch;
   });
 
@@ -261,7 +267,7 @@ const Products = () => {
 
   const handleClearFilters = () => {
     setSelectedCategory("all");
-    setPriceRange([0, 150000]);
+    setPriceRange([0, 1000000]); // Restablecer a rango completo
     setSelectedSizes([]);
     setSortBy("newest");
   };

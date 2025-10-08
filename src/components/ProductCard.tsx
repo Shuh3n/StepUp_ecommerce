@@ -1,10 +1,5 @@
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart } from "lucide-react";
-
-interface Size {
-  id_talla: number;
-  nombre_talla: string;
-}
 
 interface ProductVariant {
   id_variante: number;
@@ -13,7 +8,10 @@ interface ProductVariant {
   codigo_sku: string;
   stock: number;
   precio_ajuste: number;
-  size?: Size;
+  size?: {
+    id_talla: number;
+    nombre_talla: string;
+  };
 }
 
 interface ProductCardProps {
@@ -22,9 +20,11 @@ interface ProductCardProps {
   price: number;
   image?: string;
   category: string;
+  description?: string;
+  created_at?: string;
   variants?: ProductVariant[];
-  onAddToCart?: () => void;
-  onClick?: () => void;
+  onAddToCart: () => void;
+  onClick: () => void;
 }
 
 const ProductCard = ({
@@ -33,77 +33,149 @@ const ProductCard = ({
   price,
   image,
   category,
-  variants,
+  description,
+  created_at,
+  variants = [],
   onAddToCart,
-  onClick,
+  onClick
 }: ProductCardProps) => {
-  // Check if any variant has stock > 0
-  const hasStock = variants?.some((variant) => {
-    const stockValue = variant.stock;
-    if (stockValue !== null && stockValue !== undefined) {
-      const numericStock = parseInt(String(stockValue), 10);
-      return !isNaN(numericStock) && numericStock > 0;
-    }
-    return false;
-  }) || false;
+  // Determinar el estado del stock
+  const hasVariants = variants && variants.length > 0;
+  const hasStock = hasVariants 
+    ? variants.some(v => v.stock > 0) 
+    : true;
+
+  // Determinar si es un producto nuevo (menos de 5 días)
+  const isNew = () => {
+    if (!created_at) return false;
+    const createdDate = new Date(created_at);
+    const currentDate = new Date();
+    const daysDifference = (currentDate.getTime() - createdDate.getTime()) / (1000 * 3600 * 24);
+    return daysDifference <= 5;
+  };
 
   console.log(`ProductCard ${name}: hasStock=${hasStock}, variants:`, variants);
 
+  // Determinar el texto y estado del botón
+  const getButtonProps = () => {
+    if (!hasVariants) {
+      return {
+        text: 'Ver Detalles',
+        disabled: false,
+        variant: 'outline' as const
+      };
+    }
+    
+    if (hasStock) {
+      return {
+        text: 'Agregar',
+        disabled: false,
+        variant: 'default' as const
+      };
+    }
+    
+    return {
+      text: 'Agotado',
+      disabled: true,
+      variant: 'outline' as const
+    };
+  };
+
+  const buttonProps = getButtonProps();
+
+  const handleButtonClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!hasVariants || !hasStock) {
+      onClick();
+    } else {
+      onAddToCart();
+    }
+  };
+
   return (
-    <div
-      className="group relative flex flex-col rounded-xl bg-background transition-all hover:shadow-xl cursor-pointer"
+    <div 
+      className="glass rounded-xl overflow-hidden border border-white/20 hover:border-white/40 transition-all duration-300 cursor-pointer group h-full flex flex-col"
       onClick={onClick}
     >
-      {/* Image Container - Modified to fill edges */}
-      <div className="aspect-square overflow-hidden bg-muted rounded-t-xl">
+      {/* Imagen con altura fija */}
+      <div className="relative aspect-square overflow-hidden">
         <img
-          src={image || "/images/placeholder.png"}
+          src={image || '/placeholder.png'}
           alt={name}
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
         />
+        
+        {/* Badges en la parte superior */}
+        <div className="absolute top-3 left-3 right-3 flex justify-between items-start">
+          {/* Category Badge */}
+          <Badge variant="outline" className="bg-black/50 text-white border-white/20 text-xs">
+            {category}
+          </Badge>
+
+          {/* Status Badge */}
+          <div className="flex flex-col gap-1">
+            {isNew() && (
+              <Badge variant="secondary" className="bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white border-0 text-xs font-medium">
+                ✨ Nuevo
+              </Badge>
+            )}
+            
+            {/* Stock Badge */}
+            {!hasVariants ? (
+              !isNew() && (
+                <Badge variant="secondary" className="bg-blue-500/80 text-white text-xs">
+                  Disponible
+                </Badge>
+              )
+            ) : hasStock ? (
+              <Badge variant="secondary" className="bg-green-500/80 text-white text-xs">
+                En Stock
+              </Badge>
+            ) : (
+              <Badge variant="destructive" className="bg-red-500/80 text-white text-xs">
+                Agotado
+              </Badge>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Content Container */}
-      <div className="min-h-[160px] bg-black flex flex-col justify-between p-6 rounded-b-xl">
-        <div className="space-y-2">
-          {/* Category */}
-          <p className="text-sm text-gray-300">{category}</p>
-
-          {/* Product Name */}
-          <h3 className="font-medium text-lg line-clamp-1 text-white">
+      {/* Contenido con altura flexible */}
+      <div className="p-4 flex flex-col flex-grow">
+        {/* Información del producto */}
+        <div className="flex-grow">
+          <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2 min-h-[3.5rem]">
             {name}
           </h3>
-        </div>
-
-        {/* Price and Cart Button - Updated */}
-        <div className="flex items-center justify-between pt-2">
-          <p className="text-xl font-bold text-white">
-            ${price.toLocaleString()}
-          </p>
-
-          {onAddToCart && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation(); // Prevent triggering onClick (product detail)
-                onAddToCart(); // Call without parameters
-              }}
-              disabled={!hasStock}
-              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white"
-            >
-              <ShoppingCart className="h-4 w-4" />
-              Agregar
-            </Button>
+          {description && (
+            <p className="text-sm text-muted-foreground line-clamp-2 mb-3 min-h-[2.5rem]">
+              {description}
+            </p>
           )}
         </div>
 
-        {/* Out of Stock Badge */}
-        {!hasStock && (
-          <div className="absolute top-4 right-4 z-10 bg-red-500 text-white px-3 py-1 rounded-md text-sm">
-            Agotado
-          </div>
-        )}
+        {/* Precio y información de stock */}
+        <div className="mb-4">
+          <p className="text-2xl font-bold gradient-text mb-1">
+            ${price.toLocaleString()}
+          </p>
+          {hasVariants && (
+            <p className="text-xs text-muted-foreground">
+              {variants.filter(v => v.stock > 0).length} de {variants.length} tallas disponibles
+            </p>
+          )}
+        </div>
+
+        {/* Botón siempre en la parte inferior */}
+        <Button
+          onClick={handleButtonClick}
+          disabled={buttonProps.disabled}
+          variant={buttonProps.variant}
+          className="w-full mt-auto"
+          size="sm"
+        >
+          {buttonProps.text}
+        </Button>
       </div>
     </div>
   );
