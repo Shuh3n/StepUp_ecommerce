@@ -281,7 +281,6 @@ const Products = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      // En tu componente Layout o padre
       <Navbar 
         cartItems={totalItems}
         onCartClick={() => setIsCartOpen(true)}
@@ -290,7 +289,8 @@ const Products = () => {
       />
       
       <main className="pt-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
+        {/* Cambiar max-width para usar solo 70% del ancho */}
+        <div className="max-w-5xl mx-auto" style={{ maxWidth: '70%' }}>
           {/* Header */}
           <div className="mb-8">
             <h1 className="text-4xl font-bold mb-4">
@@ -351,7 +351,7 @@ const Products = () => {
                       <ProductCard
                         {...product}
                         image={product.image_url}
-                        onAddToCart={() => handleAddToCart(product)} // Changed this line
+                        onAddToCart={() => handleAddToCart(product)}
                         onClick={() => handleProductClick(product)}
                       />
                     </div>

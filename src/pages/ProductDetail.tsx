@@ -397,8 +397,12 @@ const ProductDetail = () => {
           onContactClick={() => {}}
           onFavoritesClick={() => {}}
         />
-        <div className="pt-24 px-4 flex items-center justify-center">
-          <p className="text-lg">Cargando producto...</p>
+        <div className="flex justify-center pt-20 px-4 sm:px-6 lg:px-8">
+          <div className="w-full max-w-4xl lg:w-[70%] glass rounded-xl border border-white/20 p-4 sm:p-6 lg:p-8">
+            <div className="flex items-center justify-center py-8">
+              <p className="text-base sm:text-lg text-white">Cargando producto...</p>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -413,12 +417,16 @@ const ProductDetail = () => {
           onContactClick={() => {}}
           onFavoritesClick={() => {}}
         />
-        <div className="pt-24 px-4 flex flex-col items-center justify-center gap-4">
-          <p className="text-xl">Producto no encontrado</p>
-          <Button onClick={() => navigate('/productos')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Volver a Productos
-          </Button>
+        <div className="flex justify-center pt-20 px-4 sm:px-6 lg:px-8">
+          <div className="w-full max-w-4xl lg:w-[70%] glass rounded-xl border border-white/20 p-4 sm:p-6 lg:p-8">
+            <div className="flex flex-col items-center justify-center gap-4 py-8">
+              <p className="text-lg sm:text-xl text-white text-center">Producto no encontrado</p>
+              <Button onClick={() => navigate('/productos')} size="sm">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Volver a Productos
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -433,135 +441,143 @@ const ProductDetail = () => {
         onFavoritesClick={() => {}}
       />
 
-      <main className="w-[60%] mx-auto pt-24 px-4">
-        <Button
-          variant="ghost"
-          onClick={() => navigate('/productos')}
-          className="mb-6"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver a Productos
-        </Button>
-
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Product Image */}
-          <div className="aspect-square rounded-xl overflow-hidden bg-muted">
-            <img
-              src={product.image_url || '/placeholder.png'}
-              alt={product.name}
-              className="w-full h-full object-cover"
-            />
-          </div>
-
-          {/* Product Info */}
-          <div className="space-y-6">
-            <div className="space-y-2">
-              <p className="text-sm uppercase tracking-wider text-muted-foreground">
-                {product.category}
-              </p>
-              <h1 className="text-3xl font-bold">{product.name}</h1>
-              <p className="text-2xl font-bold text-primary">
-                ${product.price.toLocaleString()}
-              </p>
-            </div>
-
-            {product.description && (
-              <div className="prose prose-sm">
-                <p>{product.description}</p>
-              </div>
-            )}
-
-            {/* Size Selection */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold">Tallas disponibles</h3>
-                {selectedSize && (
-                  <span className="text-sm text-muted-foreground">
-                    Seleccionada: {selectedSize} (Stock: {maxStock})
-                  </span>
-                )}
-              </div>
-
-              {hasStock ? (
-                <div className="grid grid-cols-4 gap-2">
-                  {availableSizes.map((sizeInfo) => (
-                    <button
-                      key={sizeInfo.name}
-                      onClick={() => setSelectedSize(sizeInfo.name)}
-                      className={`
-                        p-3 rounded-lg border-2 text-center transition-all
-                        ${selectedSize === sizeInfo.name
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border hover:border-primary/50'
-                        }
-                      `}
-                    >
-                      <div className="font-semibold">{sizeInfo.name}</div>
-                      <div className="text-xs opacity-75">
-                        Stock: {sizeInfo.stock}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">No hay tallas disponibles</p>
-                  <p className="text-destructive text-sm">Producto agotado</p>
-                </div>
-              )}
-            </div>
-
-            {/* Quantity Selection */}
-            {selectedSize && maxStock > 0 && (
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Cantidad</h3>
-                <div className="flex items-center gap-4">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleQuantityChange(-1)}
-                    disabled={selectedQuantity <= 1}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  
-                  <span className="text-xl font-semibold w-12 text-center">
-                    {selectedQuantity}
-                  </span>
-                  
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleQuantityChange(1)}
-                    disabled={selectedQuantity >= maxStock}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                  
-                  <span className="text-sm text-muted-foreground">
-                    de {maxStock} disponibles
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Add to Cart Button */}
+      {/* Contenedor principal responsive */}
+      <div className="flex justify-center pt-20 px-4 sm:px-6 lg:px-8 pb-8">
+        <div className="w-full max-w-4xl lg:w-[70%] glass rounded-xl border border-white/20 p-4 sm:p-6 lg:p-8">
+          <main>
             <Button
-              onClick={handleAddToCart}
-              disabled={!hasStock || !selectedSize}
-              className="w-full"
-              size="lg"
+              variant="ghost"
+              onClick={() => navigate('/productos')}
+              className="mb-4 sm:mb-6 text-white hover:text-white hover:bg-white/10"
+              size="sm"
             >
-              {!hasStock 
-                ? 'Producto Agotado'
-                : !selectedSize 
-                ? 'Selecciona una talla'
-                : `Agregar ${selectedQuantity} al Carrito`
-              }
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Volver a Productos
             </Button>
-          </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+              {/* Product Image */}
+              <div className="aspect-square rounded-xl overflow-hidden bg-black/20 border border-white/10">
+                <img
+                  src={product.image_url || '/placeholder.png'}
+                  alt={product.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              {/* Product Info */}
+              <div className="space-y-4 sm:space-y-6">
+                <div className="space-y-2">
+                  <p className="text-xs sm:text-sm uppercase tracking-wider text-white/70">
+                    {product.category}
+                  </p>
+                  <h1 className="text-2xl sm:text-3xl font-bold text-white">{product.name}</h1>
+                  <p className="text-xl sm:text-2xl font-bold text-primary">
+                    ${product.price.toLocaleString()}
+                  </p>
+                </div>
+
+                {product.description && (
+                  <div className="prose prose-sm">
+                    <p className="text-sm sm:text-base text-white/80">{product.description}</p>
+                  </div>
+                )}
+
+                {/* Size Selection */}
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <h3 className="text-base sm:text-lg font-semibold text-white">Tallas disponibles</h3>
+                    {selectedSize && (
+                      <span className="text-xs sm:text-sm text-white/70">
+                        Seleccionada: {selectedSize} (Stock: {maxStock})
+                      </span>
+                    )}
+                  </div>
+
+                  {hasStock ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                      {availableSizes.map((sizeInfo) => (
+                        <button
+                          key={sizeInfo.name}
+                          onClick={() => setSelectedSize(sizeInfo.name)}
+                          className={`
+                            p-2 sm:p-3 rounded-lg border-2 text-center transition-all
+                            ${selectedSize === sizeInfo.name
+                              ? 'border-primary bg-primary text-primary-foreground'
+                              : 'border-white/20 hover:border-primary/50 text-white bg-white/10 hover:bg-white/20'
+                            }
+                          `}
+                        >
+                          <div className="font-semibold text-sm sm:text-base">{sizeInfo.name}</div>
+                          <div className="text-xs opacity-75">
+                            Stock: {sizeInfo.stock}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-6 sm:py-8">
+                      <p className="text-white/70 text-sm sm:text-base">No hay tallas disponibles</p>
+                      <p className="text-destructive text-xs sm:text-sm">Producto agotado</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quantity Selection */}
+                {selectedSize && maxStock > 0 && (
+                  <div className="space-y-3 sm:space-y-4">
+                    <h3 className="text-base sm:text-lg font-semibold text-white">Cantidad</h3>
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleQuantityChange(-1)}
+                        disabled={selectedQuantity <= 1}
+                        className="border-white/20 text-white hover:bg-white/10 hover:text-white h-8 w-8 sm:h-10 sm:w-10"
+                      >
+                        <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+                      
+                      <span className="text-lg sm:text-xl font-semibold w-8 sm:w-12 text-center text-white">
+                        {selectedQuantity}
+                      </span>
+                      
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => handleQuantityChange(1)}
+                        disabled={selectedQuantity >= maxStock}
+                        className="border-white/20 text-white hover:bg-white/10 hover:text-white h-8 w-8 sm:h-10 sm:w-10"
+                      >
+                        <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
+                      </Button>
+                      
+                      <span className="text-xs sm:text-sm text-white/70">
+                        de {maxStock} disponibles
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Add to Cart Button */}
+                <Button
+                  onClick={handleAddToCart}
+                  disabled={!hasStock || !selectedSize}
+                  className="w-full text-sm sm:text-base"
+                  size="lg"
+                >
+                  {!hasStock 
+                    ? 'Producto Agotado'
+                    : !selectedSize 
+                    ? 'Selecciona una talla'
+                    : `Agregar ${selectedQuantity} al Carrito`
+                  }
+                </Button>
+              </div>
+            </div>
+          </main>
         </div>
-      </main>
+      </div>
 
       <Cart
         isOpen={isCartOpen}
