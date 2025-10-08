@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X, Plus, Minus, ShoppingCart, Trash2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { X, Plus, Minus, ShoppingCart, Trash2, Edit } from "lucide-react";
 
 interface CartItem {
   id: number;
@@ -14,16 +15,34 @@ interface CartItem {
   variantId?: number;
 }
 
+interface AvailableSize {
+  name: string;
+  stock: number;
+  variant: any;
+}
+
 interface CartProps {
   isOpen: boolean;
   onClose: () => void;
   items: CartItem[];
   onUpdateQuantity: (id: number, quantity: number, selectedSize?: string) => void;
   onRemoveItem: (id: number, selectedSize?: string) => void;
+  onChangeSizeInCart?: (id: number, oldSize: string, newSize: string) => void;
+  availableSizes?: AvailableSize[];
 }
 
-const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartProps) => {
+const Cart = ({ 
+  isOpen, 
+  onClose, 
+  items, 
+  onUpdateQuantity, 
+  onRemoveItem, 
+  onChangeSizeInCart,
+  availableSizes = []
+}: CartProps) => {
   const [isAnimating, setIsAnimating] = useState(false);
+  const [editingSizeFor, setEditingSizeFor] = useState<string | null>(null);
+  
   const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -38,10 +57,17 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
     setTimeout(() => onClose(), 300);
   };
 
+  const handleSizeChange = (item: CartItem, newSize: string) => {
+    if (onChangeSizeInCart && item.selectedSize) {
+      onChangeSizeInCart(item.id, item.selectedSize, newSize);
+      setEditingSizeFor(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className="fixed inset-0 z-[9999] flex">
       {/* Backdrop */}
       <div 
         className={`fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
@@ -51,7 +77,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
       />
       
       {/* Cart Panel */}
-      <div className={`ml-auto w-full max-w-md h-full glass border-l border-white/20 flex flex-col transition-transform duration-300 ${
+      <div className={`ml-auto w-full max-w-md h-full glass border-l border-white/20 flex flex-col transition-transform duration-300 z-[10000] ${
         isAnimating ? 'translate-x-0' : 'translate-x-full'
       }`}>
         {/* Header */}
@@ -85,71 +111,107 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
             </div>
           ) : (
             <div className="space-y-4">
-              {items.map((item) => (
-                <div
-                  key={`${item.id}-${item.selectedSize || 'no-size'}`}
-                  className="flex gap-4 p-4 bg-card rounded-xl border border-white/10"
-                >
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="w-16 h-16 object-cover rounded-lg"
-                  />
-                  
-                  <div className="flex-1">
-                    <h4 className="font-medium text-sm mb-1">{item.name}</h4>
-                    <div className="flex gap-2 mb-2">
-                      <Badge variant="outline" className="text-xs">
-                        {item.category}
-                      </Badge>
-                      {item.selectedSize && (
-                        <Badge variant="secondary" className="text-xs">
-                          Talla: {item.selectedSize}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-primary font-bold">
-                      ${(item.price * item.quantity).toLocaleString()}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onRemoveItem(item.id, item.selectedSize)}
-                      className="h-6 w-6 text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+              {items.map((item) => {
+                const itemKey = `${item.id}-${item.selectedSize || 'no-size'}`;
+                const isEditingSize = editingSizeFor === itemKey;
+                
+                return (
+                  <div
+                    key={itemKey}
+                    className="flex gap-4 p-4 bg-card rounded-xl border border-white/10"
+                  >
+                    <img
+                      src={item.image}
+                      alt={item.name}
+                      className="w-16 h-16 object-cover rounded-lg"
+                    />
                     
-                    <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <h4 className="font-medium text-sm mb-1">{item.name}</h4>
+                      <div className="flex gap-2 mb-2">
+                        <Badge variant="outline" className="text-xs">
+                          {item.category}
+                        </Badge>
+                        {item.selectedSize && (
+                          <div className="flex items-center gap-1">
+                            {isEditingSize ? (
+                              <Select
+                                value={item.selectedSize}
+                                onValueChange={(newSize) => handleSizeChange(item, newSize)}
+                              >
+                                <SelectTrigger className="h-6 w-16 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availableSizes.map((size) => (
+                                    <SelectItem key={size.name} value={size.name}>
+                                      {size.name} ({size.stock})
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs">
+                                Talla: {item.selectedSize}
+                              </Badge>
+                            )}
+                            {onChangeSizeInCart && !isEditingSize && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-4 w-4"
+                                onClick={() => setEditingSizeFor(itemKey)}
+                              >
+                                <Edit className="h-2 w-2" />
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-primary font-bold">
+                        ${(item.price * item.quantity).toLocaleString()
+                        }
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2">
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => onUpdateQuantity(item.id, item.quantity - 1, item.selectedSize)}
-                        className="h-6 w-6"
-                        disabled={item.quantity <= 1}
+                        onClick={() => onRemoveItem(item.id, item.selectedSize)}
+                        className="h-6 w-6 text-destructive hover:text-destructive"
                       >
-                        <Minus className="h-3 w-3" />
+                        <Trash2 className="h-3 w-3" />
                       </Button>
                       
-                      <span className="w-8 text-center text-sm font-medium">
-                        {item.quantity}
-                      </span>
-                      
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => onUpdateQuantity(item.id, item.quantity + 1, item.selectedSize)}
-                        className="h-6 w-6"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onUpdateQuantity(item.id, item.quantity - 1, item.selectedSize)}
+                          className="h-6 w-6"
+                          disabled={item.quantity <= 1}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        
+                        <span className="w-8 text-center text-sm font-medium">
+                          {item.quantity}
+                        </span>
+                        
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => onUpdateQuantity(item.id, item.quantity + 1, item.selectedSize)}
+                          className="h-6 w-6"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

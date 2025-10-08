@@ -1,10 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import ProductCard from "@/components/ProductCard";
 import ProductFilters from "@/components/ProductFilters";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
-import { useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useNavigate } from 'react-router-dom';
 
@@ -56,61 +55,10 @@ const Products = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // Update the useEffect to fetch only products first
-  useEffect(() => {
-    const fetchProducts = async () => {
-      setLoadingProducts(true);
-      try {
-        // Fetch products first
-        // Fetch products first
-        const { data: productsData, error: productsError } = await supabase
-          .from('products')
-          .select('*');
-
-        if (productsError) throw productsError;
-
-        // Fetch all variants with size information separately
-        const { data: variantsData, error: variantsError } = await supabase
-          .from('products_variants')
-          .select(`
-            *,
-            size:sizes!id_talla (
-              id_talla,
-              nombre_talla
-            )
-          `);
-
-        if (variantsError) throw variantsError;
-
-        console.log('Products data:', productsData);
-        console.log('Variants data with sizes:', variantsData);
-
-        // Use variants data with size information
-        const transformedProducts = productsData?.map(product => ({
-          ...product,
-          variants: (variantsData || [])
-            .filter(variant => variant.id_producto === product.id)
-        })) || [];
-
-        setProducts(transformedProducts);
-      } catch (error: any) {
-        console.error('Error fetching products:', error);
-        toast({ 
-          title: 'Error al cargar productos', 
-          description: error.message, 
-          variant: 'destructive' 
-        });
-      } finally {
-        setLoadingProducts(false);
-      }
-    };
-
-    fetchProducts();
-  }, [toast]);
-
+  // First, define categories
   const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
 
-  // Update the product filtering to consider variants
+  // Then define filteredProducts
   const filteredProducts = products.filter(product => {
     const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
@@ -121,6 +69,7 @@ const Products = () => {
     return categoryMatch && priceMatch && sizeMatch;
   });
 
+  // Then define sortedProducts
   const sortedProducts = [...filteredProducts].sort((a, b) => {
     switch (sortBy) {
       case "price-low":
@@ -131,6 +80,129 @@ const Products = () => {
         return b.id - a.id; // newest first
     }
   });
+
+  // Move the useEffect for fetching products here (before the logging useEffect)
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoadingProducts(true);
+      try {
+        console.log('🔄 Starting to fetch products...');
+        console.log('🔗 Supabase URL:', supabase.supabaseUrl);
+
+        // Fetch products directly without the count test
+        console.log('📦 Fetching products...');
+        const { data: productsData, error: productsError } = await supabase
+          .from('products')
+          .select('*')
+          .order('id', { ascending: false });
+
+        if (productsError) {
+          console.error('❌ Error fetching products:', productsError);
+          console.error('❌ Full error object:', {
+            message: productsError.message,
+            details: productsError.details,
+            hint: productsError.hint,
+            code: productsError.code
+          });
+          throw productsError;
+        }
+
+        console.log('✅ Products fetched successfully:', productsData?.length || 0, 'products');
+        console.log('📦 Raw products data:', productsData);
+
+        // Verify specific products exist
+        const expectedIds = [11, 12, 14, 15];
+        expectedIds.forEach(id => {
+          const found = productsData?.find(p => p.id === id);
+          console.log(`🔍 Product ${id}:`, found ? '✅ Found' : '❌ Missing', found?.name || 'N/A');
+        });
+
+        // Fetch variants with simpler query
+        console.log('📦 Fetching variants...');
+        const { data: variantsData, error: variantsError } = await supabase
+          .from('products_variants')
+          .select('*');
+
+        if (variantsError) {
+          console.error('❌ Error fetching variants:', variantsError);
+          console.warn('⚠️ Continuing without variants data');
+        } else {
+          console.log('✅ Variants fetched successfully:', variantsData?.length || 0, 'variants');
+          console.log('📦 Variants data:', variantsData);
+        }
+
+        // Fetch sizes separately
+        console.log('📦 Fetching sizes...');
+        const { data: sizesData, error: sizesError } = await supabase
+          .from('sizes')
+          .select('*');
+
+        if (sizesError) {
+          console.error('❌ Error fetching sizes:', sizesError);
+          console.warn('⚠️ Continuing without sizes data');
+        } else {
+          console.log('✅ Sizes fetched successfully:', sizesData?.length || 0, 'sizes');
+          console.log('📦 Sizes data:', sizesData);
+        }
+
+        // Transform products with their variants and sizes
+        const transformedProducts = productsData?.map(product => {
+          const productVariants = (variantsData || [])
+            .filter(variant => variant.id_producto === product.id)
+            .map(variant => {
+              // Manually join with sizes
+              const size = sizesData?.find(s => s.id_talla === variant.id_talla);
+              return {
+                ...variant,
+                size: size
+              };
+            });
+          
+          console.log(`📦 Product ${product.id} (${product.name}) has ${productVariants.length} variants`);
+          
+          return {
+            ...product,
+            variants: productVariants
+          };
+        }) || [];
+
+        console.log('✅ Final transformed products:', transformedProducts.length);
+        console.log('📦 Final products list:', transformedProducts.map(p => ({ 
+          id: p.id, 
+          name: p.name, 
+          category: p.category,
+          variantsCount: p.variants?.length || 0
+        })));
+
+        setProducts(transformedProducts);
+      } catch (error: any) {
+        console.error('💥 Error in fetchProducts:', error);
+        
+        toast({ 
+          title: 'Error al cargar productos', 
+          description: `No se pudieron cargar los productos. ${error.message || 'Error desconocido'}`, 
+          variant: 'destructive' 
+        });
+      } finally {
+        setLoadingProducts(false);
+        console.log('🏁 fetchProducts completed');
+      }
+    };
+
+    fetchProducts();
+  }, [toast]);
+
+  // Now the logging useEffect with correct dependencies
+  useEffect(() => {
+    console.log('🔍 Filter applied:');
+    console.log('  - Category:', selectedCategory);
+    console.log('  - Price range:', priceRange);
+    console.log('  - Selected sizes:', selectedSizes);
+    console.log('  - Sort by:', sortBy);
+    console.log('  - Total products:', products.length);
+    console.log('  - Filtered products count:', filteredProducts.length);
+    console.log('  - Sorted products count:', sortedProducts.length);
+  }, [selectedCategory, priceRange, selectedSizes, sortBy, products.length, filteredProducts.length, sortedProducts.length]);
 
   const handleAddToCart = (product: Product) => {
     setCartItems(prev => {
