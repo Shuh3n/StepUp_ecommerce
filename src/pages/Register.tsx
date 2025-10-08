@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, CheckCircle, XCircle, Loader } from "lucide-react";
 import { supabase } from '../lib/supabase';
 
 export default function Register() {
@@ -20,6 +20,11 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // Estados para verificaciones en tiempo real
+  const [emailVerifying, setEmailVerifying] = useState(false);
+  const [phoneVerifying, setPhoneVerifying] = useState(false);
+  const [idVerifying, setIdVerifying] = useState(false);
 
   const [formData, setFormData] = useState({
     identification: "",
@@ -32,49 +37,214 @@ export default function Register() {
 
   const [fieldErrors, setFieldErrors] = useState({
     identification: "",
+    full_name: "",  
     email: "",
     phone: "",
-    password: ""
+    password: "",
+    confirmPassword: ""
   });
 
-  // Validación en tiempo real
+  // Validaciones específicas para contraseña
+  const validatePassword = (password: string) => {
+    const requirements = {
+      length: password.length >= 6,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /\d/.test(password),
+      special: /[!@#$%^&*(),.?":{}|<>]/.test(password)
+    };
+
+    const missing = [];
+    if (!requirements.length) missing.push("mínimo 6 caracteres");
+    if (!requirements.uppercase) missing.push("una mayúscula");
+    if (!requirements.lowercase) missing.push("una minúscula");
+    if (!requirements.number) missing.push("un número");
+
+    return {
+      isValid: requirements.length && requirements.uppercase && requirements.lowercase && requirements.number,
+      missing,
+      requirements
+    };
+  };
+
+  // Verificar email en tiempo real
+  const checkEmailAvailability = async (email: string) => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    
+    setEmailVerifying(true);
+    try {
+      // Verificar en auth de Supabase primero
+      const { data: authCheck } = await supabase.auth.admin.listUsers();
+      const emailExists = authCheck?.users?.some(user => user.email === email);
+      
+      if (emailExists) {
+        setFieldErrors(prev => ({ ...prev, email: 'Email ya registrado' }));
+        return;
+      }
+
+      // Verificar en tabla users
+      const { data: userData } = await supabase
+        .from('users')
+        .select('email')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (userData) {
+        setFieldErrors(prev => ({ ...prev, email: 'Email ya registrado' }));
+      } else {
+        setFieldErrors(prev => ({ ...prev, email: '' }));
+      }
+    } catch (error) {
+      console.log('Error verificando email:', error);
+    } finally {
+      setEmailVerifying(false);
+    }
+  };
+
+  // Verificar teléfono en tiempo real
+  const checkPhoneAvailability = async (phone: string) => {
+    if (!phone || phone.replace(/\D/g, '').length < 10) return;
+    
+    setPhoneVerifying(true);
+    try {
+      const { data: phoneData } = await supabase
+        .from('users')
+        .select('phone')
+        .eq('phone', phone)
+        .maybeSingle();
+
+      if (phoneData) {
+        setFieldErrors(prev => ({ ...prev, phone: 'Teléfono ya registrado' }));
+      } else {
+        setFieldErrors(prev => ({ ...prev, phone: '' }));
+      }
+    } catch (error) {
+      console.log('Error verificando teléfono:', error);
+    } finally {
+      setPhoneVerifying(false);
+    }
+  };
+
+  // Verificar identificación en tiempo real
+  const checkIdAvailability = async (identification: string) => {
+    if (!/^\d+$/.test(identification) || identification.length < 6) return;
+    
+    setIdVerifying(true);
+    try {
+      const { data: idData } = await supabase
+        .from('users')
+        .select('identification')
+        .eq('identification', identification)
+        .maybeSingle();
+
+      if (idData) {
+        setFieldErrors(prev => ({ ...prev, identification: 'Cédula ya registrada' }));
+      } else {
+        setFieldErrors(prev => ({ ...prev, identification: '' }));
+      }
+    } catch (error) {
+      console.log('Error verificando identificación:', error);
+    } finally {
+      setIdVerifying(false);
+    }
+  };
+
+  // Validación mejorada en tiempo real
   const validateField = (name: string, value: string) => {
     const newErrors = { ...fieldErrors };
 
     switch (name) {
       case 'identification':
         if (!value.trim()) {
-          newErrors.identification = 'La cédula es obligatoria';
-        } else if (!/^\d{6,12}$/.test(value)) {
-          newErrors.identification = 'La cédula debe tener entre 6 y 12 dígitos';
+          newErrors.identification = 'Requerido';
+        } else if (!/^\d+$/.test(value)) {
+          newErrors.identification = 'Solo números';
+        } else if (value.length < 6) {
+          newErrors.identification = `Faltan ${6 - value.length} dígitos`;
+        } else if (value.length > 12) {
+          newErrors.identification = `Máximo 12 dígitos`;
         } else {
           newErrors.identification = '';
+          // Verificar disponibilidad después de un delay
+          setTimeout(() => checkIdAvailability(value), 500);
+        }
+        break;
+
+      case 'full_name':
+        if (!value.trim()) {
+          newErrors.full_name = 'Requerido';
+        } else if (value.trim().length < 2) {
+          newErrors.full_name = 'Mínimo 2 caracteres';
+        } else if (value.trim().length > 100) {
+          newErrors.full_name = 'Máximo 100 caracteres';
+        } else if (!/^[a-zA-ZÀ-ÿ\s]+$/.test(value)) {
+          newErrors.full_name = 'Solo letras y espacios';
+        } else if (value.trim().split(' ').length < 2) {
+          newErrors.full_name = 'Ingresa nombre y apellido';
+        } else if (value.trim().split(' ').some(word => word.length < 2)) {
+          newErrors.full_name = 'Cada nombre debe tener al menos 2 letras';
+        } else {
+          newErrors.full_name = '';
         }
         break;
 
       case 'email':
         if (!value.trim()) {
-          newErrors.email = 'El email es obligatorio';
+          newErrors.email = 'Requerido';
+        } else if (!value.includes('@')) {
+          newErrors.email = 'Falta @';
+        } else if (!value.includes('.')) {
+          newErrors.email = 'Falta dominio (.com, .es, etc.)';
         } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-          newErrors.email = 'El formato del email es inválido';
+          newErrors.email = 'Formato inválido';
         } else {
           newErrors.email = '';
+          // Verificar disponibilidad después de un delay
+          setTimeout(() => checkEmailAvailability(value), 800);
         }
         break;
 
       case 'phone':
-        if (value && !/^[\d\s+\-()]{10,15}$/.test(value)) {
-          newErrors.phone = 'El teléfono debe tener entre 10 y 15 caracteres';
+        if (!value.trim()) {
+          newErrors.phone = 'Requerido';
+        } else if (!/^\d+$/.test(value.replace(/\s/g, ''))) {
+          newErrors.phone = 'Solo números';
+        } else if (value.replace(/\D/g, '').length !== 10) {
+          const currentLength = value.replace(/\D/g, '').length;
+          if (currentLength < 10) {
+            newErrors.phone = `Faltan ${10 - currentLength} dígitos`;
+          } else {
+            newErrors.phone = `Debe ser exactamente 10 dígitos`;
+          }
         } else {
           newErrors.phone = '';
+          // Verificar disponibilidad después de un delay
+          setTimeout(() => checkPhoneAvailability(value), 500);
         }
         break;
 
       case 'password':
-        if (value.length < 6) {
-          newErrors.password = 'La contraseña debe tener al menos 6 caracteres';
+        const passwordValidation = validatePassword(value);
+        if (!passwordValidation.isValid) {
+          if (passwordValidation.missing.length === 1) {
+            newErrors.password = `Falta: ${passwordValidation.missing[0]}`;
+          } else if (passwordValidation.missing.length === 2) {
+            newErrors.password = `Faltan: ${passwordValidation.missing.join(' y ')}`;
+          } else {
+            newErrors.password = `Faltan: ${passwordValidation.missing.slice(0, -1).join(', ')} y ${passwordValidation.missing.slice(-1)}`;
+          }
         } else {
           newErrors.password = '';
+        }
+        break;
+
+      case 'confirmPassword':
+        if (!value) {
+          newErrors.confirmPassword = 'Confirma tu contraseña';
+        } else if (value !== formData.password) {
+          newErrors.confirmPassword = 'No coincide';
+        } else {
+          newErrors.confirmPassword = '';
         }
         break;
     }
@@ -86,61 +256,10 @@ export default function Register() {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     validateField(name, value);
-  };
-
-  // Verificar datos únicos antes del registro
-  const checkUniqueData = async () => {
-    try {
-      const checks = [];
-
-      // Verificar identificación
-      if (formData.identification) {
-        checks.push(
-          supabase
-            .from('users')
-            .select('identification')
-            .eq('identification', formData.identification)
-            .maybeSingle()
-        );
-      }
-
-      // Verificar email
-      if (formData.email) {
-        checks.push(
-          supabase
-            .from('users')
-            .select('email')
-            .eq('email', formData.email)
-            .maybeSingle()
-        );
-      }
-
-      // Verificar teléfono (si se proporcionó)
-      if (formData.phone) {
-        checks.push(
-          supabase
-            .from('users')
-            .select('phone')
-            .eq('phone', formData.phone)
-            .maybeSingle()
-        );
-      }
-
-      const results = await Promise.all(checks);
-      const duplicateFields = [];
-
-      results.forEach((result, index) => {
-        if (result.data && !result.error) {
-          if (index === 0) duplicateFields.push('cédula');
-          if (index === 1) duplicateFields.push('email');
-          if (index === 2) duplicateFields.push('teléfono');
-        }
-      });
-
-      return duplicateFields;
-    } catch (error) {
-      console.error('Error checking unique data:', error);
-      return [];
+    
+    // Si se cambia la contraseña, revalidar confirmación
+    if (name === 'password' && formData.confirmPassword) {
+      validateField('confirmPassword', formData.confirmPassword);
     }
   };
 
@@ -148,47 +267,37 @@ export default function Register() {
     e.preventDefault();
     setLoading(true);
 
-    // Validaciones finales
+    // Validar todos los campos
     Object.keys(formData).forEach(key => {
-      if (key !== 'phone' && key !== 'confirmPassword') {
-        validateField(key, formData[key as keyof typeof formData]);
-      }
+      validateField(key, formData[key as keyof typeof formData]);
     });
 
     // Verificar si hay errores
-    if (Object.values(fieldErrors).some(error => error !== '')) {
+    const hasErrors = Object.values(fieldErrors).some(error => error !== '');
+    if (hasErrors) {
+      const firstError = Object.entries(fieldErrors).find(([, error]) => error !== '');
       toast({
-        title: "Error de validación",
-        description: "Por favor, corrige los errores en el formulario",
+        title: "Error en el formulario",
+        description: firstError ? `${firstError[0]}: ${firstError[1]}` : "Corrige los errores",
         variant: "destructive"
       });
       setLoading(false);
       return;
     }
 
-    if (formData.password !== formData.confirmPassword) {
+    // Verificar que no haya verificaciones en curso
+    if (emailVerifying || phoneVerifying || idVerifying) {
       toast({
-        title: "Error",
-        description: "Las contraseñas no coinciden",
-        variant: "destructive"
+        title: "Verificando datos",
+        description: "Espera mientras verificamos la información",
+        variant: "default"
       });
       setLoading(false);
       return;
     }
 
     try {
-      // 1. Verificar datos únicos
-      const duplicateErrors = await checkUniqueData();
-      
-      if (duplicateErrors.length > 0) {
-        const errorMessage = duplicateErrors.length === 1 
-          ? `La ${duplicateErrors[0]} ya está registrada.`
-          : `Los siguientes datos ya están registrados: ${duplicateErrors.join(', ')}.`;
-        
-        throw new Error(errorMessage);
-      }
-
-      // 2. Crear usuario en Supabase Auth
+      // Crear usuario en Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -203,26 +312,45 @@ export default function Register() {
       });
 
       if (authError) {
-        console.error('Auth error:', authError);
+        let errorMessage = 'Error al crear cuenta';
         
-        if (authError.message?.includes('already registered') || 
-            authError.message?.includes('user_exists')) {
-          throw new Error('Este email ya está registrado en el sistema.');
+        if (authError.message?.includes('already registered')) {
+          errorMessage = 'Email ya registrado';
+        } else if (authError.message?.includes('invalid email')) {
+          errorMessage = 'Email inválido';
+        } else if (authError.message?.includes('weak password')) {
+          errorMessage = 'Contraseña muy débil';
+        } else if (authError.message?.includes('signup disabled')) {
+          errorMessage = 'Registro temporalmente deshabilitado';
         }
         
-        throw authError;
+        toast({
+          title: "Error de registro",
+          description: errorMessage,
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
       }
 
       const user = authData.user;
-      if (!user) throw new Error("No se pudo crear el usuario en Auth");
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "No se pudo crear el usuario",
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
+      }
 
-      // 3. Insertar en la tabla users
+      // Insertar en la tabla users
       const { error: insertError } = await supabase.from("users").insert({
         auth_id: user.id,
         identification: formData.identification,
         full_name: formData.full_name,
         email: formData.email,
-        phone: formData.phone || null,
+        phone: formData.phone,
         created_at: new Date().toISOString(),
         email_verified: false,
         login_count: 0,
@@ -230,57 +358,34 @@ export default function Register() {
       });
 
       if (insertError) {
-  console.error('Insert error details:', insertError);
-  
-  // Manejo mejorado de errores de duplicados
-  if (insertError.code === '23505') {
-    // Verificar EXACTAMENTE qué campo causó el error
-    let duplicateField = 'datos';
-    
-    // Patrones más específicos para cada campo
-    if (insertError.message.includes('auth_users_identification_key') || 
-        insertError.message.includes('identification') ||
-        /duplicate.*identification|identification.*duplicate/i.test(insertError.message)) {
-      duplicateField = 'cédula';
-    } 
-    else if (insertError.message.includes('auth_users_email_key') || 
-             insertError.message.includes('email') ||
-             /duplicate.*email|email.*duplicate/i.test(insertError.message)) {
-      duplicateField = 'email';
-    }
-    else if (insertError.message.includes('auth_users_phone_key') || 
-             insertError.message.includes('phone') ||
-             /duplicate.*phone|phone.*duplicate/i.test(insertError.message)) {
-      duplicateField = 'teléfono';
-    }
-    else if (insertError.message.includes('auth_users_auth_id_key') || 
-             insertError.message.includes('auth_id')) {
-      duplicateField = 'usuario';
-    }
-    
-    // Mensajes personalizados para cada campo
-    const errorMessages: { [key: string]: string } = {
-      'cédula': '❌ Esta cédula ya está registrada en nuestro sistema.',
-      'email': '❌ Este correo electrónico ya tiene una cuenta asociada.',
-      'teléfono': '❌ Este número de teléfono ya está en uso.',
-      'usuario': '❌ Este usuario ya existe en el sistema.',
-      'datos': '❌ Los datos ingresados ya existen en nuestro sistema.'
-    };
-    
-    throw new Error(errorMessages[duplicateField]);
-  }
-  
-  // Para otros errores de base de datos
-  if (insertError.code && insertError.code.startsWith('23')) {
-    throw new Error('Error de base de datos. Por favor, contacta al soporte.');
-  }
-  
-  throw insertError;
-}
+        console.error('Insert error:', insertError);
+        
+        let errorMessage = 'Error al guardar datos';
+        
+        if (insertError.code === '23505') {
+          if (insertError.message.includes('identification')) {
+            errorMessage = 'Cédula ya registrada';
+          } else if (insertError.message.includes('email')) {
+            errorMessage = 'Email ya registrado';
+          } else if (insertError.message.includes('phone')) {
+            errorMessage = 'Teléfono ya registrado';
+          } else {
+            errorMessage = 'Datos duplicados';
+          }
+        }
+        
+        toast({
+          title: "Error de base de datos",
+          description: errorMessage,
+          variant: "destructive"
+        });
+        setLoading(false);
+        return;
+      }
 
       toast({
-        title: "¡Cuenta creada exitosamente!",
-        description: "Revisa tu email para confirmar tu cuenta.",
+        title: "✅ Cuenta creada",
+        description: "Revisa tu email para confirmar",
       });
 
       navigate('/verify-email', { 
@@ -294,33 +399,9 @@ export default function Register() {
     } catch (err: any) {
       console.error('Registration error:', err);
       
-      let errorMessage = 'Error al crear la cuenta. Intenta nuevamente.';
-      
-      if (err.message.includes('cédula ya está registrada')) {
-        errorMessage = 'Esta cédula ya está registrada en el sistema.';
-      } 
-      else if (err.message.includes('email ya está registrado')) {
-        errorMessage = 'Este email ya está registrado en el sistema.';
-      }
-      else if (err.message.includes('teléfono ya está registrado')) {
-        errorMessage = 'Este teléfono ya está registrado en el sistema.';
-      }
-      else if (err.message.includes('already registered')) {
-        errorMessage = 'Este email ya tiene una cuenta registrada.';
-      }
-      else if (err.code === '23505') {
-        errorMessage = 'Los datos ingresados ya existen en el sistema.';
-      }
-      else if (err.code === '42501') {
-        errorMessage = 'Error de permisos. Contacta al administrador.';
-      }
-      else if (err.message) {
-        errorMessage = err.message;
-      }
-
       toast({
-        title: "Error",
-        description: errorMessage,
+        title: "Error inesperado",
+        description: "Intenta de nuevo en unos minutos",
         variant: "destructive"
       });
     } finally {
@@ -333,10 +414,63 @@ export default function Register() {
       formData.identification.trim() !== '' &&
       formData.full_name.trim() !== '' &&
       formData.email.trim() !== '' &&
+      formData.phone.trim() !== '' && // Ahora obligatorio
       formData.password.trim() !== '' &&
       formData.confirmPassword.trim() !== '' &&
       Object.values(fieldErrors).every(error => error === '') &&
-      formData.password === formData.confirmPassword
+      !emailVerifying && !phoneVerifying && !idVerifying
+    );
+  };
+
+  // Componente para mostrar requisitos de contraseña
+  const PasswordRequirements = ({ password }: { password: string }) => {
+    const validation = validatePassword(password);
+    
+    if (!password) return null;
+
+    return (
+      <div className="mt-2 text-xs space-y-1">
+        <div className="flex items-center gap-1">
+          {validation.requirements.length ? (
+            <CheckCircle className="w-3 h-3 text-green-500" />
+          ) : (
+            <XCircle className="w-3 h-3 text-red-500" />
+          )}
+          <span className={validation.requirements.length ? 'text-green-600' : 'text-red-500'}>
+            Mínimo 6 caracteres
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          {validation.requirements.uppercase ? (
+            <CheckCircle className="w-3 h-3 text-green-500" />
+          ) : (
+            <XCircle className="w-3 h-3 text-red-500" />
+          )}
+          <span className={validation.requirements.uppercase ? 'text-green-600' : 'text-red-500'}>
+            Una mayúscula (A-Z)
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          {validation.requirements.lowercase ? (
+            <CheckCircle className="w-3 h-3 text-green-500" />
+          ) : (
+            <XCircle className="w-3 h-3 text-red-500" />
+          )}
+          <span className={validation.requirements.lowercase ? 'text-green-600' : 'text-red-500'}>
+            Una minúscula (a-z)
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          {validation.requirements.number ? (
+            <CheckCircle className="w-3 h-3 text-green-500" />
+          ) : (
+            <XCircle className="w-3 h-3 text-red-500" />
+          )}
+          <span className={validation.requirements.number ? 'text-green-600' : 'text-red-500'}>
+            Un número (0-9)
+          </span>
+        </div>
+      </div>
     );
   };
 
@@ -363,7 +497,7 @@ export default function Register() {
               <h1 className="text-3xl font-bold gradient-text">Step Up</h1>
             </div>
             <div>
-              <CardTitle className="text-2xl">Registro de cuenta</CardTitle>
+              <CardTitle className="text-2xl">Crear cuenta</CardTitle>
               <CardDescription>
                 Únete a Step Up y encuentra tu estilo
               </CardDescription>
@@ -371,23 +505,28 @@ export default function Register() {
           </CardHeader>
 
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-4">
               {/* Identification */}
               <div className="space-y-2">
-                <Label htmlFor="identification">Cédula de Identidad *</Label>
-                <Input
-                  id="identification"
-                  name="identification"
-                  type="text"
-                  placeholder="Tu número de cédula"
-                  value={formData.identification}
-                  onChange={handleChange}
-                  className={`glass border-white/20 ${fieldErrors.identification ? 'border-red-500' : ''}`}
-                  required
-                  disabled={loading}
-                />
+                <Label htmlFor="identification">Cédula *</Label>
+                <div className="relative">
+                  <Input
+                    id="identification"
+                    name="identification"
+                    type="text"
+                    placeholder="12345678"
+                    value={formData.identification}
+                    onChange={handleChange}
+                    className={`glass border-white/20 ${fieldErrors.identification ? 'border-red-500' : ''} ${idVerifying ? 'pr-10' : ''}`}
+                    required
+                    disabled={loading}
+                  />
+                  {idVerifying && (
+                    <Loader className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
                 {fieldErrors.identification && (
-                  <p className="text-red-500 text-sm">{fieldErrors.identification}</p>
+                  <p className="text-red-500 text-xs">{fieldErrors.identification}</p>
                 )}
               </div>
 
@@ -398,49 +537,63 @@ export default function Register() {
                   id="full_name"
                   name="full_name"
                   type="text"
-                  placeholder="Tu nombre completo"
+                  placeholder="Juan Pérez García"
                   value={formData.full_name}
                   onChange={handleChange}
-                  className="glass border-white/20"
+                  className={`glass border-white/20 ${fieldErrors.full_name ? 'border-red-500' : ''}`}
                   required
                   disabled={loading}
                 />
+                {fieldErrors.full_name && (
+                  <p className="text-red-500 text-xs">{fieldErrors.full_name}</p>
+                )}
               </div>
 
               {/* Email */}
               <div className="space-y-2">
-                <Label htmlFor="email">Correo electrónico *</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="tu@email.com"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className={`glass border-white/20 ${fieldErrors.email ? 'border-red-500' : ''}`}
-                  required
-                  disabled={loading}
-                />
+                <Label htmlFor="email">Email *</Label>
+                <div className="relative">
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="juan@email.com"
+                    value={formData.email}
+                    onChange={handleChange}
+                    className={`glass border-white/20 ${fieldErrors.email ? 'border-red-500' : ''} ${emailVerifying ? 'pr-10' : ''}`}
+                    required
+                    disabled={loading}
+                  />
+                  {emailVerifying && (
+                    <Loader className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
                 {fieldErrors.email && (
-                  <p className="text-red-500 text-sm">{fieldErrors.email}</p>
+                  <p className="text-red-500 text-xs">{fieldErrors.email}</p>
                 )}
               </div>
 
-              {/* Phone */}
+              {/* Phone - AHORA OBLIGATORIO */}
               <div className="space-y-2">
-                <Label htmlFor="phone">Número de teléfono</Label>
-                <Input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  placeholder="Tu número de teléfono (opcional)"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  className={`glass border-white/20 ${fieldErrors.phone ? 'border-red-500' : ''}`}
-                  disabled={loading}
-                />
+                <Label htmlFor="phone">Teléfono *</Label>
+                <div className="relative">
+                  <Input
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    placeholder="3001234567"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    className={`glass border-white/20 ${fieldErrors.phone ? 'border-red-500' : ''} ${phoneVerifying ? 'pr-10' : ''}`}
+                    required
+                    disabled={loading}
+                  />
+                  {phoneVerifying && (
+                    <Loader className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
                 {fieldErrors.phone && (
-                  <p className="text-red-500 text-sm">{fieldErrors.phone}</p>
+                  <p className="text-red-500 text-xs">{fieldErrors.phone}</p>
                 )}
               </div>
 
@@ -452,13 +605,12 @@ export default function Register() {
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Abc123"
                     value={formData.password}
                     onChange={handleChange}
                     className={`glass border-white/20 pr-10 ${fieldErrors.password ? 'border-red-500' : ''}`}
                     required
                     disabled={loading}
-                    minLength={6}
                   />
                   <Button
                     type="button"
@@ -476,8 +628,9 @@ export default function Register() {
                   </Button>
                 </div>
                 {fieldErrors.password && (
-                  <p className="text-red-500 text-sm">{fieldErrors.password}</p>
+                  <p className="text-red-500 text-xs">{fieldErrors.password}</p>
                 )}
+                <PasswordRequirements password={formData.password} />
               </div>
 
               {/* Confirm Password */}
@@ -488,10 +641,10 @@ export default function Register() {
                     id="confirmPassword"
                     name="confirmPassword"
                     type={showConfirmPassword ? "text" : "password"}
-                    placeholder="Confirma tu contraseña"
+                    placeholder="Repite tu contraseña"
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    className="glass border-white/20 pr-10"
+                    className={`glass border-white/20 pr-10 ${fieldErrors.confirmPassword ? 'border-red-500' : ''}`}
                     required
                     disabled={loading}
                   />
@@ -510,27 +663,37 @@ export default function Register() {
                     )}
                   </Button>
                 </div>
+                {fieldErrors.confirmPassword && (
+                  <p className="text-red-500 text-xs">{fieldErrors.confirmPassword}</p>
+                )}
               </div>
 
               {/* Submit */}
               <Button
                 type="submit"
                 variant="hero"
-                className="w-full"
+                className="w-full mt-6"
                 disabled={loading || !isFormValid()}
               >
-                {loading ? "Creando cuenta..." : "Crear Cuenta"}
+                {loading ? "Creando..." : "Crear Cuenta"}
               </Button>
+              
+              {/* Estado de verificaciones */}
+              {(emailVerifying || phoneVerifying || idVerifying) && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Verificando disponibilidad...
+                </p>
+              )}
             </form>
 
-            <div className="mt-6 text-center">
-              <p className="text-muted-foreground">
+            <div className="mt-4 text-center">
+              <p className="text-muted-foreground text-sm">
                 ¿Ya tienes cuenta?{" "}
                 <a
                   href="/login"
                   className="text-primary hover:underline font-medium"
                 >
-                  Inicia sesión aquí
+                  Inicia sesión
                 </a>
               </p>
             </div>
