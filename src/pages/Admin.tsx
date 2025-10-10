@@ -1,15 +1,22 @@
 import React, { useState, useEffect, useCallback } from "react";
 // ...existing imports...
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import JSZip from 'jszip';
 // Interfaces de inventario
 interface Product {
     id: number;
     name: string;
+    description?: string;
+    price: number;
+    image_url?: string;
     category: string;
+    category_name: string;
+    created_at?: string;
+    updated_at?: string;
     stock: number;
     stock_minimo: number;
-    price: number;
-    image_url: string;
-    description: string;
+    variants: Record<string, unknown>[];
+    active?: boolean;
 }
 
 interface InventoryMovement {
@@ -20,6 +27,7 @@ interface InventoryMovement {
     cantidad: number;
     fecha: string;
     products?: { name: string };
+    usuario_nombre?: string;
 }
 import { toast } from '@/hooks/use-toast';
 import {
@@ -38,7 +46,7 @@ import { Label } from "@/components/ui/label";
 import { ChartContainer } from "@/components/ui/chart";
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
-import { BarChart, Users, Package, LayoutDashboard, AlertTriangle, TrendingUp, ShoppingCart, DollarSign, Clock, Store, ShoppingBag, Warehouse, ArrowRight, Activity, Bell, CheckCircle, RotateCcw } from "lucide-react";
+import { BarChart, Users, Package, LayoutDashboard, AlertTriangle, TrendingUp, ShoppingCart, DollarSign, Clock, Store, ShoppingBag, Warehouse, ArrowRight, Activity, Bell, CheckCircle } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { supabase } from '../lib/supabase';
 import ProductFilters from "@/components/ProductFilters";
@@ -88,27 +96,13 @@ interface EditProduct {
     id: number;
     name: string;
     category: string;
+    category_name: string;
     stock: number;
     stock_minimo: number;
     price: number;
     description: string;
     image_url: string;
     active?: boolean;
-}
-
-interface Product {
-    id: number;
-    name: string;
-    stock: number;
-    stock_minimo: number;
-}
-
-interface InventoryMovement {
-    id: number;
-    product_id: number;
-    tipo: 'venta' | 'devolucion' | 'reposicion';
-    cantidad: number;
-    fecha: string;
 }
 
 // Si quieres también puedes definir Order aquí...
@@ -164,7 +158,7 @@ const Admin = () => {
         if (!insertError) {
             toast({ title: 'Producto creado exitosamente' });
             setShowCreateProductModal(false);
-            setNewProduct({ name: '', category: '', stock: 1, stock_minimo: 0, price: 0, image_url: '', description: '' });
+            setNewProduct({ name: '', category: '', category_name: '', stock: 1, stock_minimo: 0, price: 0, image_url: '', description: '' });
             setImageFile(null);
             setProductsPage(1); // Regresar a la primera página para ver el nuevo producto
             // Pequeño delay para asegurar que la base de datos procese la inserción
@@ -217,6 +211,7 @@ const Admin = () => {
     const [newProduct, setNewProduct] = useState({
         name: '',
         category: '',
+        category_name: '',
         stock: 1,
         stock_minimo: 0,
         price: 0,
@@ -238,12 +233,38 @@ const Admin = () => {
     const [filterPrice, setFilterPrice] = useState<[number, number]>([0, 500000]);
     const [filterActive, setFilterActive] = useState<string>("all");
     const [sortBy, setSortBy] = useState<string>("newest");
-    // Para exportar CSV
+    // Para exportar CSV (compatibilidad con Excel: UTF-8 BOM, ; como separador, CRLF)
     const exportToCSV = () => {
+        // Delimitador preferido por Excel en configuraciones regionales ES/CO
+        const delimiter = ";";
+        const newline = "\r\n";
         const headers = ["ID", "Nombre", "Categoría", "Stock", "Stock mínimo", "Precio", "Activo"];
-        const rows = filteredProducts.map(p => [p.id, p.name, p.category, p.stock, p.stock_minimo, p.price, p.active ? "Sí" : "No"]);
-        const csv = headers.join(",") + "\n" + rows.map(r => r.join(",")).join("\n");
-        const blob = new Blob([csv], { type: "text/csv" });
+        const escapeCell = (val: unknown) => {
+            if (val === null || val === undefined) return "";
+            // Normalizar booleanos
+            if (typeof val === "boolean") return val ? "Sí" : "No";
+            let s = String(val);
+            // Escapar comillas dobles
+            s = s.replace(/"/g, '""');
+            // Envolver siempre en comillas por seguridad
+            return `"${s}"`;
+        };
+        const rows = filteredProducts.map(p => [
+            p.id,
+            p.name,
+            p.category_name,
+            p.stock,
+            p.stock_minimo,
+            // Mantener precio como número simple (sin separadores) para que Excel lo detecte
+            p.price,
+            (p.active !== false)
+        ]);
+        const csvBody = [headers, ...rows]
+            .map(r => r.map(escapeCell).join(delimiter))
+            .join(newline);
+        // Agregar BOM para acentos correctos en Excel
+        const csvWithBom = "\uFEFF" + csvBody + newline;
+        const blob = new Blob([csvWithBom], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -253,8 +274,22 @@ const Admin = () => {
     };
 
     // Handler para abrir modal de edición
-    const handleEditProduct = (product: EditProduct) => {
-        setEditProduct(product);
+    const handleEditProduct = (product: Product & { active?: boolean }) => {
+        // Mapear el producto real al tipo de edición asegurando campos requeridos
+        const mapped: EditProduct = {
+            id: product.id,
+            name: product.name,
+            category: product.category,
+            category_name: product.category_name,
+            stock: product.stock,
+            stock_minimo: product.stock_minimo,
+            price: product.price,
+            description: product.description ?? '',
+            image_url: product.image_url ?? '',
+            active: product.active,
+        };
+
+        setEditProduct(mapped);
         setEditNameError(null);
         setEditImageError(null);
         setEditImageFile(null);
@@ -317,8 +352,21 @@ const Admin = () => {
     // Paginación para historial de movimientos
     const [movementPage, setMovementPage] = useState(1);
     const movementsPerPage = 10;
-    const totalMovementPages = Math.ceil(inventoryMovements.length / movementsPerPage);
-    const paginatedMovements = inventoryMovements.slice((movementPage - 1) * movementsPerPage, movementPage * movementsPerPage);
+    // Ordenar por fecha descendente para ver primero los registros más recientes
+    const sortedMovements = React.useMemo(() => {
+        return [...inventoryMovements].sort((a, b) => {
+            const da = new Date(a.fecha).getTime();
+            const db = new Date(b.fecha).getTime();
+            return db - da;
+        });
+    }, [inventoryMovements]);
+    const totalMovementPages = Math.ceil(sortedMovements.length / movementsPerPage);
+    const paginatedMovements = React.useMemo(() => {
+        const start = (movementPage - 1) * movementsPerPage;
+        return sortedMovements.slice(start, start + movementsPerPage);
+    }, [sortedMovements, movementPage]);
+    // Reiniciar a la primera página cuando cambia la data
+    useEffect(() => { setMovementPage(1); }, [inventoryMovements.length]);
     const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
     const [movementType, setMovementType] = useState<'venta' | 'devolucion' | 'reposicion'>('venta');
     const [movementQty, setMovementQty] = useState<string>('1');
@@ -326,11 +374,42 @@ const Admin = () => {
     const [alertStock, setAlertStock] = useState<string | null>(null);
     // Consulta real de productos desde Supabase
     const fetchProducts = useCallback(async () => {
-        const { data, error } = await supabase.from('products').select('*');
+        const { data, error } = await supabase
+            .from('products')
+            .select('*, categories(id, name)');
         if (!error && data) {
-            // Si no existe el campo active, lo agregamos por defecto en true
-            const productsWithActive = data.map((p: ProductWithActive) => ({ ...p, active: p.active !== undefined ? p.active : true }));
-            setProducts(productsWithActive);
+            // Mapear productos para tener category (uuid) y category_name directo
+            type SupabaseProduct = {
+                id: number;
+                name: string;
+                description?: string;
+                price: number;
+                image_url?: string;
+                created_at?: string;
+                updated_at?: string;
+                stock: number;
+                stock_minimo: number;
+                variants?: Record<string, unknown>[];
+                categories?: { id: string; name: string };
+                category?: string;
+                active?: boolean;
+            };
+            const productsWithCategory = data.map((p: SupabaseProduct) => ({
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                price: p.price,
+                image_url: p.image_url,
+                category: p.categories?.id || 'Sin categoría',
+                category_name: p.categories?.name || '',
+                created_at: p.created_at,
+                updated_at: p.updated_at,
+                stock: p.stock,
+                stock_minimo: p.stock_minimo,
+                variants: p.variants || [],
+                active: p.active !== undefined ? p.active : true
+            }));
+            setProducts(productsWithCategory);
         } else {
             toast({ title: 'Error al cargar productos', description: error?.message, variant: 'destructive' });
         }
@@ -348,7 +427,7 @@ const Admin = () => {
     };
     // Filtros y ordenamiento
     const filteredProducts = products
-        .filter(p => filterCategory === "all" || p.category === filterCategory)
+    .filter(p => filterCategory === "all" || p.category === filterCategory)
         .filter(p => p.price >= filterPrice[0] && p.price <= filterPrice[1])
         .filter(p => {
             if (filterActive === "all") return true;
@@ -362,7 +441,22 @@ const Admin = () => {
             if (sortBy === "newest") return b.id - a.id;
             return 0;
         });
-    const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
+    const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+
+    // Cargar categorías desde Supabase
+    useEffect(() => {
+        const fetchCategories = async () => {
+            const { data, error } = await supabase
+                .from('categories')
+                .select('id, name');
+            if (!error && data) {
+                setCategories(data);
+            } else {
+                setCategories([]);
+            }
+        };
+        fetchCategories();
+    }, []);
 
     // Calcular rango dinámico de precios basado en productos reales
     const maxPrice = products.length > 0 ? Math.max(...products.map(p => p.price)) : 500000;
@@ -417,7 +511,7 @@ const Admin = () => {
         if (!newCategoryName.trim()) return;
         
         // Verificar si la categoría ya existe
-        if (categories.includes(newCategoryName)) {
+    if (categories.some(cat => cat.name === newCategoryName)) {
             toast({ 
                 title: 'Error', 
                 description: 'Ya existe una categoría con ese nombre',
@@ -442,7 +536,7 @@ const Admin = () => {
         if (!editCategoryName.trim() || !editingCategory) return;
         
         // Verificar si la nueva categoría ya existe
-        if (categories.includes(editCategoryName) && editCategoryName !== editingCategory) {
+    if (categories.some(cat => cat.name === editCategoryName) && editCategoryName !== editingCategory) {
             toast({ 
                 title: 'Error', 
                 description: 'Ya existe una categoría con ese nombre',
@@ -454,7 +548,7 @@ const Admin = () => {
         // Actualizar productos que tenían la categoría anterior
         const updatedProducts = products.map(p => 
             p.category === editingCategory 
-                ? { ...p, category: editCategoryName }
+                ? { ...p, category: editingCategory, category_name: editCategoryName }
                 : p
         );
         setProducts(updatedProducts);
@@ -473,7 +567,7 @@ const Admin = () => {
         if (!confirmDeleteCategory) return;
         
         // Verificar que no hay productos con esta categoría
-        const productsWithCategory = products.filter(p => p.category === confirmDeleteCategory);
+    const productsWithCategory = products.filter(p => p.category === confirmDeleteCategory);
         if (productsWithCategory.length > 0) {
             toast({ 
                 title: 'Error', 
@@ -501,33 +595,54 @@ const Admin = () => {
         });
     };
 
-    const handleExportData = () => {
-        // Crear un archivo JSON con todos los datos
-        const exportData = {
-            products: products,
-            users: userData,
-            orders: ordersData,
-            inventory: inventoryMovements,
-            config: {
-                company: companyConfig,
-                system: systemConfig
-            },
-            exportDate: new Date().toISOString()
+    const handleExportData = async () => {
+        // Helpers para CSV compatible con Excel
+        const delimiter = ";";
+        const newline = "\r\n";
+        const escapeCell = (val: unknown) => {
+            if (val === null || val === undefined) return "";
+            if (typeof val === "boolean") return val ? "Sí" : "No";
+            let s = String(val);
+            s = s.replace(/"/g, '""');
+            return `"${s}"`;
+        };
+        const buildCsv = (headers: string[], rows: unknown[][]) => {
+            const body = [headers, ...rows].map(r => r.map(escapeCell).join(delimiter)).join(newline);
+            return "\uFEFF" + body + newline; // BOM + CRLF
         };
 
-        const dataStr = JSON.stringify(exportData, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
+        // Construir CSVs
+        const productsHeaders = ["ID", "Nombre", "Categoría", "Stock", "Stock mínimo", "Precio", "Activo"];
+        const productsRows = products.map(p => [p.id, p.name, p.category_name, p.stock, p.stock_minimo, p.price, p.active !== false]);
+        const productsCsv = buildCsv(productsHeaders, productsRows);
+
+        const usersHeaders = ["Auth ID", "Identificación", "Nombre", "Email", "Teléfono", "Creado", "Actualizado", "Último login", "Verificado", "# Logins", "# Pedidos"];
+        const usersRows = userData.map(u => [u.auth_id, u.identification, u.full_name, u.email, u.phone, u.created_at, u.updated_at, u.last_login, u.email_verified, u.login_count, u.order_count]);
+        const usersCsv = buildCsv(usersHeaders, usersRows);
+
+        const ordersHeaders = ["ID", "Usuario", "Estado", "Total", "Dirección", "Teléfono", "Método pago", "Estado pago", "Creado"];
+        const ordersRows = ordersData.map(o => [o.id, o.user_id, o.status, o.total, o.address, o.phone, o.payment_method, o.payment_status, o.created_at]);
+        const ordersCsv = buildCsv(ordersHeaders, ordersRows);
+
+        const invHeaders = ["ID", "Producto ID", "Producto", "Tipo", "Cantidad", "Fecha", "Usuario"];
+        const invRows = inventoryMovements.map(h => [h.id, h.product_id, h.product_name, h.tipo, h.cantidad, h.fecha, h.usuario_nombre || ""]);
+        const invCsv = buildCsv(invHeaders, invRows);
+
+        // Crear ZIP y descargar
+        const zip = new JSZip();
+        zip.file("productos.csv", productsCsv);
+        zip.file("usuarios.csv", usersCsv);
+        zip.file("pedidos.csv", ordersCsv);
+        zip.file("inventario.csv", invCsv);
+        const content = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(content);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `stepup-export-${new Date().toISOString().split('T')[0]}.json`;
+        a.download = `stepup-datos-${new Date().toISOString().split('T')[0]}.zip`;
         a.click();
         URL.revokeObjectURL(url);
 
-        toast({ 
-            title: 'Datos exportados', 
-            description: 'Los datos se han exportado exitosamente'
-        });
+        toast({ title: 'Datos exportados', description: 'Se descargó un ZIP con CSVs compatibles con Excel' });
     };
 
     // Función para activar/desactivar productos
@@ -657,6 +772,32 @@ const Admin = () => {
         notifications: []
     });
 
+    // Usuarios: búsqueda, filtro y paginación
+    const [userSearch, setUserSearch] = useState('');
+    const [userVerifiedFilter, setUserVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>('all');
+    const [usersPage, setUsersPage] = useState(1);
+    const usersPerPage = 10;
+    const filteredUsers = React.useMemo(() => {
+        const q = userSearch.trim().toLowerCase();
+        let list = [...userData];
+        if (q) {
+            list = list.filter(u =>
+                (u.full_name || '').toLowerCase().includes(q) ||
+                (u.email || '').toLowerCase().includes(q)
+            );
+        }
+        if (userVerifiedFilter === 'verified') list = list.filter(u => u.email_verified === true);
+        if (userVerifiedFilter === 'unverified') list = list.filter(u => u.email_verified === false);
+        return list;
+    }, [userData, userSearch, userVerifiedFilter]);
+    const totalUsersPages = Math.ceil(filteredUsers.length / usersPerPage) || 1;
+    const paginatedUsers = React.useMemo(() => {
+        const start = (usersPage - 1) * usersPerPage;
+        return filteredUsers.slice(start, start + usersPerPage);
+    }, [filteredUsers, usersPage]);
+    // Resetear a la primera página cuando cambien filtros/búsqueda
+    useEffect(() => { setUsersPage(1); }, [userSearch, userVerifiedFilter]);
+
     // Calcular KPIs cuando cambian los datos relevantes
     useEffect(() => {
         // Total de productos
@@ -700,9 +841,9 @@ const Admin = () => {
 
     // (Ya declaradas arriba para evitar error de uso antes de declaración)
     const [editingUserId, setEditingUserId] = useState<string | null>(null);
-    const [editForm, setEditForm] = useState<Partial<User>>({});
+    // Estado para el formulario de edición de usuario y control del modal
+    const [editForm, setEditForm] = useState<{ full_name?: string; email?: string; phone?: string }>({});
     const [editModalOpen, setEditModalOpen] = useState(false);
-
     // Fetch users: Obtiene la lista de usuarios desde Supabase
     const fetchUserData = async () => {
         const { data, error } = await supabase.from("users").select("*");
@@ -880,7 +1021,7 @@ const Admin = () => {
                     </div>
 
                     <Tabs defaultValue={activeTab} value={activeTab} onValueChange={setActiveTab} className="space-y-4 sm:space-y-6 lg:space-y-8">
-                        <div className="overflow-x-auto scrollbar-hide">
+                        <div className="overflow-x-auto overflow-y-hidden scrollbar-hide">
                             <TabsList className="flex items-center justify-start gap-2 sm:gap-4 px-2 py-2 bg-transparent border-0 min-w-max">
                                 <TabsTrigger 
                                     value="dashboard" 
@@ -930,13 +1071,6 @@ const Admin = () => {
                                 >
                                     <Package className="h-3 w-3 sm:h-4 sm:w-4" />
                                     <span className="font-medium">Categorías</span>
-                                </TabsTrigger>
-                                <TabsTrigger 
-                                    value="config"
-                                    className="admin-nav-link flex items-center gap-1 sm:gap-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 px-2 sm:px-3 py-2 data-[state=active]:text-primary text-sm sm:text-base whitespace-nowrap flex-shrink-0"
-                                >
-                                    <LayoutDashboard className="h-3 w-3 sm:h-4 sm:w-4" />
-                                    <span className="font-medium">Configuración</span>
                                 </TabsTrigger>
                             </TabsList>
                         </div>
@@ -1114,10 +1248,31 @@ const Admin = () => {
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
+                                    {/* Controles de búsqueda y filtro (Usuarios) */}
+                                    <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                                        <div className="flex-1">
+                                            <Input
+                                                placeholder="Buscar por nombre o email..."
+                                                value={userSearch}
+                                                onChange={e => setUserSearch(e.target.value)}
+                                                className="glass border-white/20"
+                                            />
+                                        </div>
+                                        <Select value={userVerifiedFilter} onValueChange={(v: 'all'|'verified'|'unverified') => setUserVerifiedFilter(v)}>
+                                            <SelectTrigger className="w-full sm:w-48 glass border-white/20">
+                                                <SelectValue placeholder="Estado" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">Todos</SelectItem>
+                                                <SelectItem value="verified">Verificados</SelectItem>
+                                                <SelectItem value="unverified">No verificados</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                     {/* Vista móvil - Cards */}
                                     <div className="block lg:hidden space-y-4">
-                                        {userData.length > 0 ? (
-                                            userData.map((user) => (
+                                        {paginatedUsers.length > 0 ? (
+                                            paginatedUsers.map((user) => (
                                                 <div key={user.auth_id} className="bg-card rounded-xl border border-white/10 p-4 space-y-3">
                                                     <div className="flex items-start justify-between">
                                                         <div className="flex-1 min-w-0">
@@ -1171,114 +1326,156 @@ const Admin = () => {
                                                 </div>
                                             </div>
                                         )}
+                                        {/* Paginación móvil */}
+                                        {totalUsersPages > 1 && (
+                                            <div className="flex justify-center items-center gap-2 p-3">
+                                                <Button size="sm" variant="outline" className="flex-1" disabled={usersPage === 1} onClick={() => setUsersPage(usersPage - 1)}>Anterior</Button>
+                                                <span className="text-sm text-muted-foreground whitespace-nowrap">{usersPage} / {totalUsersPages}</span>
+                                                <Button size="sm" variant="outline" className="flex-1" disabled={usersPage === totalUsersPages} onClick={() => setUsersPage(usersPage + 1)}>Siguiente</Button>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {/* Vista desktop - Tabla */}
-                                    <div className="hidden lg:block overflow-x-auto">
-                                        <table className="min-w-full text-sm">
-                                            <thead>
-                                                <tr>
-                                                    <th className="px-2 py-1 text-left">Nombre</th>
-                                                    <th className="px-2 py-1 text-left">Email</th>
-                                                    <th className="px-2 py-1 text-left">Teléfono</th>
-                                                    <th className="px-2 py-1 text-left">Acciones</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {userData.map((user) => (
-                                                    <tr key={user.auth_id}>
-                                                        <td className="px-2 py-1">{user.full_name}</td>
-                                                        <td className="px-2 py-1">{user.email}</td>
-                                                        <td className="px-2 py-1">{user.phone}</td>
-                                                        <td className="px-2 py-1">
-                                                            <DropdownMenu>
-                                                                <DropdownMenuTrigger asChild>
-                                                                    <Button size="sm" variant="outline"><ChevronDown /></Button>
-                                                                </DropdownMenuTrigger>
-                                                                <DropdownMenuContent>
-                                                                    <DropdownMenuItem onClick={() => { startEditUser(user); setEditModalOpen(true); }}>Editar</DropdownMenuItem>
-                                                                    <DropdownMenuSeparator />
-                                                                    <DropdownMenuItem onClick={() => setConfirmDeleteUserId(user.auth_id)} disabled={loadingAction === user.auth_id}>Eliminar</DropdownMenuItem>
-                                                                </DropdownMenuContent>
-                                                            </DropdownMenu>
-                                                            {/* Modal editar usuario */}
-                                                            <Dialog open={editModalOpen && editingUserId === user.auth_id} onOpenChange={(open) => {
-                                                                setEditModalOpen(open);
-                                                                if (!open) { setEditingUserId(null); setEditForm({}); }
-                                                            }}>
-                                                                <DialogTrigger asChild></DialogTrigger>
-                                                                <DialogContent>
-                                                                    <DialogHeader>
-                                                                        <DialogTitle>Editar Usuario</DialogTitle>
-                                                                        <DialogDescription>Modifica los datos del usuario y guarda los cambios.</DialogDescription>
-                                                                    </DialogHeader>
-                                                                    <form onSubmit={e => { e.preventDefault(); saveEditUser(user.auth_id); }} className="space-y-4">
-                                                                        <div>
-                                                                            <Label htmlFor="edit-fullname">Nombre</Label>
-                                                                            <Input
-                                                                                id="edit-fullname"
-                                                                                type="text"
-                                                                                className="glass border-white/20"
-                                                                                value={editForm.full_name || ''}
-                                                                                onChange={e => setEditForm({ ...editForm, full_name: e.target.value })}
-                                                                                required
-                                                                            />
-                                                                        </div>
-                                                                        <div>
-                                                                            <Label htmlFor="edit-email">Email</Label>
-                                                                            <Input
-                                                                                id="edit-email"
-                                                                                type="email"
-                                                                                className="glass border-white/20"
-                                                                                value={editForm.email || ''}
-                                                                                onChange={e => setEditForm({ ...editForm, email: e.target.value })}
-                                                                                required
-                                                                            />
-                                                                        </div>
-                                                                        <div>
-                                                                            <Label htmlFor="edit-phone">Teléfono</Label>
-                                                                            <Input
-                                                                                id="edit-phone"
-                                                                                type="text"
-                                                                                className="glass border-white/20"
-                                                                                value={editForm.phone || ''}
-                                                                                onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
-                                                                            />
-                                                                        </div>
-                                                                        <DialogFooter className="flex gap-2 justify-end">
-                                                                            <Button type="submit" size="sm" variant="default">Guardar</Button>
-                                                                            <DialogClose asChild>
-                                                                                <Button type="button" size="sm" variant="outline" onClick={() => { setEditingUserId(null); setEditForm({}); setEditModalOpen(false); }}>Cancelar</Button>
-                                                                            </DialogClose>
-                                                                        </DialogFooter>
-                                                                    </form>
-                                                                </DialogContent>
-                                                            </Dialog>
-                                                            {/* Modal confirmación eliminar usuario */}
-                                                            <Dialog open={confirmDeleteUserId === user.auth_id} onOpenChange={(open) => { if (!open) setConfirmDeleteUserId(null); }}>
-                                                                <DialogContent>
-                                                                    <DialogHeader>
-                                                                        <DialogTitle>¿Eliminar usuario?</DialogTitle>
-                                                                        <DialogDescription>Esta acción no se puede deshacer.</DialogDescription>
-                                                                    </DialogHeader>
-                                                                    <DialogFooter>
-                                                                        <Button variant="destructive" size="sm" disabled={loadingAction === user.auth_id} onClick={async () => {
-                                                                            setLoadingAction(user.auth_id);
-                                                                            await handleDeleteUser(user.auth_id);
-                                                                            setLoadingAction(null);
-                                                                            setConfirmDeleteUserId(null);
-                                                                        }}>Eliminar</Button>
+                                    {/* Vista desktop - Cards */}
+                                    <div className="hidden lg:block">
+                                        {paginatedUsers.length > 0 ? (
+                                            <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+                                                {paginatedUsers.map((user) => (
+                                                    <div key={user.auth_id} className="bg-card rounded-xl border border-white/10 p-4 space-y-3">
+                                                        <div className="flex items-start justify-between">
+                                                            <div className="flex-1 min-w-0">
+                                                                <h3 className="font-semibold text-base truncate">{user.full_name || 'Sin nombre'}</h3>
+                                                                <p className="text-sm text-muted-foreground truncate">{user.email}</p>
+                                                                <p className="text-sm text-muted-foreground">{user.phone || 'Sin teléfono'}</p>
+                                                            </div>
+                                                            <div className="flex flex-col gap-2 ml-2">
+                                                                <Button 
+                                                                    size="sm" 
+                                                                    variant="outline" 
+                                                                    className="min-h-[40px] px-3 py-2"
+                                                                    onClick={() => { 
+                                                                        startEditUser(user); 
+                                                                        setEditModalOpen(true); 
+                                                                    }}
+                                                                >
+                                                                    Editar
+                                                                </Button>
+                                                                <Button 
+                                                                    size="sm" 
+                                                                    variant="destructive" 
+                                                                    className="min-h-[40px] px-3 py-2"
+                                                                    onClick={() => setConfirmDeleteUserId(user.auth_id)}
+                                                                    disabled={loadingAction === user.auth_id}
+                                                                >
+                                                                    Eliminar
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-4 pt-2 border-t border-white/10">
+                                                            <div>
+                                                                <p className="text-xs text-muted-foreground">Pedidos</p>
+                                                                <p className="font-medium text-sm">{user.order_count || 0}</p>
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs text-muted-foreground">Verificado</p>
+                                                                <p className={`font-medium text-sm ${user.email_verified ? 'text-green-600' : 'text-red-500'}`}>
+                                                                    {user.email_verified ? 'Sí' : 'No'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        {/* Modal editar usuario */}
+                                                        <Dialog open={editModalOpen && editingUserId === user.auth_id} onOpenChange={(open) => {
+                                                            setEditModalOpen(open);
+                                                            if (!open) { setEditingUserId(null); setEditForm({}); }
+                                                        }}>
+                                                            <DialogTrigger asChild></DialogTrigger>
+                                                            <DialogContent>
+                                                                <DialogHeader>
+                                                                    <DialogTitle>Editar Usuario</DialogTitle>
+                                                                    <DialogDescription>Modifica los datos del usuario y guarda los cambios.</DialogDescription>
+                                                                </DialogHeader>
+                                                                <form onSubmit={e => { e.preventDefault(); saveEditUser(user.auth_id); }} className="space-y-4">
+                                                                    <div>
+                                                                        <Label htmlFor="edit-fullname">Nombre</Label>
+                                                                        <Input
+                                                                            id="edit-fullname"
+                                                                            type="text"
+                                                                            className="glass border-white/20"
+                                                                            value={editForm.full_name || ''}
+                                                                            onChange={e => setEditForm({ ...editForm, full_name: e.target.value })}
+                                                                            required
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <Label htmlFor="edit-email">Email</Label>
+                                                                        <Input
+                                                                            id="edit-email"
+                                                                            type="email"
+                                                                            className="glass border-white/20"
+                                                                            value={editForm.email || ''}
+                                                                            onChange={e => setEditForm({ ...editForm, email: e.target.value })}
+                                                                            required
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <Label htmlFor="edit-phone">Teléfono</Label>
+                                                                        <Input
+                                                                            id="edit-phone"
+                                                                            type="text"
+                                                                            className="glass border-white/20"
+                                                                            value={editForm.phone || ''}
+                                                                            onChange={e => setEditForm({ ...editForm, phone: e.target.value })}
+                                                                        />
+                                                                    </div>
+                                                                    <DialogFooter className="flex gap-2 justify-end">
+                                                                        <Button type="submit" size="sm" variant="default">Guardar</Button>
                                                                         <DialogClose asChild>
-                                                                            <Button size="sm" variant="outline" onClick={() => setConfirmDeleteUserId(null)}>Cancelar</Button>
+                                                                            <Button type="button" size="sm" variant="outline" onClick={() => { setEditingUserId(null); setEditForm({}); setEditModalOpen(false); }}>Cancelar</Button>
                                                                         </DialogClose>
                                                                     </DialogFooter>
-                                                                </DialogContent>
-                                                            </Dialog>
-                                                        </td>
-                                                    </tr>
+                                                                </form>
+                                                            </DialogContent>
+                                                        </Dialog>
+                                                        {/* Modal confirmación eliminar usuario */}
+                                                        <Dialog open={confirmDeleteUserId === user.auth_id} onOpenChange={(open) => { if (!open) setConfirmDeleteUserId(null); }}>
+                                                            <DialogContent>
+                                                                <DialogHeader>
+                                                                    <DialogTitle>¿Eliminar usuario?</DialogTitle>
+                                                                    <DialogDescription>Esta acción no se puede deshacer.</DialogDescription>
+                                                                </DialogHeader>
+                                                                <DialogFooter>
+                                                                    <Button variant="destructive" size="sm" disabled={loadingAction === user.auth_id} onClick={async () => {
+                                                                        setLoadingAction(user.auth_id);
+                                                                        await handleDeleteUser(user.auth_id);
+                                                                        setLoadingAction(null);
+                                                                        setConfirmDeleteUserId(null);
+                                                                    }}>Eliminar</Button>
+                                                                    <DialogClose asChild>
+                                                                        <Button size="sm" variant="outline" onClick={() => setConfirmDeleteUserId(null)}>Cancelar</Button>
+                                                                    </DialogClose>
+                                                                </DialogFooter>
+                                                            </DialogContent>
+                                                        </Dialog>
+                                                    </div>
                                                 ))}
-                                            </tbody>
-                                        </table>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center gap-3 py-12 text-center">
+                                                <Users className="h-12 w-12 text-muted-foreground/50" />
+                                                <div>
+                                                    <p className="font-medium">No hay usuarios registrados</p>
+                                                    <p className="text-sm text-muted-foreground">Los usuarios aparecerán aquí cuando se registren</p>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Paginación desktop */}
+                                        {totalUsersPages > 1 && (
+                                            <div className="flex justify-center items-center gap-2 p-3">
+                                                <Button size="sm" variant="outline" disabled={usersPage === 1} onClick={() => setUsersPage(usersPage - 1)}>Anterior</Button>
+                                                <span className="text-sm text-muted-foreground">Página {usersPage} de {totalUsersPages}</span>
+                                                <Button size="sm" variant="outline" disabled={usersPage === totalUsersPages} onClick={() => setUsersPage(usersPage + 1)}>Siguiente</Button>
+                                            </div>
+                                        )}
                                     </div>
                                 </CardContent>
                             </Card>
@@ -1637,31 +1834,79 @@ const Admin = () => {
                                     </div>
                                     {alertStock && <div className="mt-4 p-3 bg-destructive/20 text-destructive border border-destructive rounded-lg font-semibold shadow">{alertStock}</div>}
                                     <div className="mt-8">
-                                        <h3 className="font-bold mb-2 text-muted-foreground">Historial de movimientos</h3>
-                                        <div className="relative">
-                                            <table className="min-w-full text-sm">
-                                                <thead>
-                                                    <tr>
-                                                        <th className="px-2 py-1 text-left">Fecha</th>
-                                                        <th className="px-2 py-1 text-left">Producto</th>
-                                                        <th className="px-2 py-1 text-left">Tipo</th>
-                                                        <th className="px-2 py-1 text-left">Cantidad</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {paginatedMovements.map(hist => (
-                                                        <tr key={hist.id}>
-                                                            <td className="px-2 py-1">{new Date(hist.fecha).toLocaleString()}</td>
-                                                            <td className="px-2 py-1">{hist.product_name}</td>
-                                                            <td className="px-2 py-1">{hist.tipo}</td>
-                                                            <td className="px-2 py-1">{hist.cantidad}</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                            {/* Controles de paginación con posición fija */}
+                                        <div className="flex items-center justify-between gap-3 mb-2">
+                                            <h3 className="font-bold text-muted-foreground m-0">Historial de movimientos</h3>
+                                            <span className="text-xs text-muted-foreground">{inventoryMovements.length} registros</span>
+                                        </div>
+
+                                        {/* Mobile cards */}
+                                        <div className="grid gap-2 sm:hidden">
+                                            {paginatedMovements.length === 0 ? (
+                                                <div className="text-sm text-muted-foreground py-4 text-center">No hay movimientos</div>
+                                            ) : (
+                                                paginatedMovements.map((hist) => (
+                                                    <div key={hist.id} className="p-3 rounded-lg border border-white/10 bg-background/60">
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <div className="font-medium truncate">{hist.product_name}</div>
+                                                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${hist.tipo === 'venta' ? 'bg-red-500/10 text-red-500 border-red-500/20' : hist.tipo === 'reposicion' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
+                                                                {hist.tipo}
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">{new Date(hist.fecha).toLocaleString()}</div>
+                                                        <div className="mt-1 text-sm"><span className="text-muted-foreground">Cantidad:</span> {hist.cantidad}</div>
+                                                    </div>
+                                                ))
+                                            )}
                                             {totalMovementPages > 1 && (
-                                                <div className="fixed left-0 right-0 bottom-0 flex justify-center items-center gap-2 p-4 bg-card border-t border-white/10 z-10" style={{ boxShadow: '0 -2px 8px rgba(0,0,0,0.04)' }}>
+                                                <div className="flex justify-center items-center gap-2 p-3">
+                                                    <Button size="sm" variant="outline" className="flex-1" disabled={movementPage === 1} onClick={() => setMovementPage(movementPage - 1)}>
+                                                        Anterior
+                                                    </Button>
+                                                    <span className="text-sm text-muted-foreground whitespace-nowrap">{movementPage} / {totalMovementPages}</span>
+                                                    <Button size="sm" variant="outline" className="flex-1" disabled={movementPage === totalMovementPages} onClick={() => setMovementPage(movementPage + 1)}>
+                                                        Siguiente
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Desktop table */}
+                                        <div className="hidden sm:block rounded-lg border border-white/10 overflow-hidden">
+                                            <div className="max-h-80 overflow-auto">
+                                                <table className="min-w-full text-sm">
+                                                    <thead className="sticky top-0 bg-background/80 backdrop-blur border-b border-white/10 z-10">
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left w-48">Fecha</th>
+                                                            <th className="px-3 py-2 text-left">Producto</th>
+                                                            <th className="px-3 py-2 text-left w-28">Tipo</th>
+                                                            <th className="px-3 py-2 text-right w-24">Cantidad</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {paginatedMovements.length === 0 ? (
+                                                            <tr>
+                                                                <td colSpan={4} className="px-3 py-6 text-center text-sm text-muted-foreground">No hay movimientos</td>
+                                                            </tr>
+                                                        ) : (
+                                                            paginatedMovements.map((hist) => (
+                                                                <tr key={hist.id} className="border-b border-white/5">
+                                                                    <td className="px-3 py-2 whitespace-nowrap">{new Date(hist.fecha).toLocaleString()}</td>
+                                                                    <td className="px-3 py-2">{hist.product_name}</td>
+                                                                    <td className="px-3 py-2">
+                                                                        <span className={`text-[10px] px-2 py-0.5 rounded-full border ${hist.tipo === 'venta' ? 'bg-red-500/10 text-red-500 border-red-500/20' : hist.tipo === 'reposicion' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
+                                                                            {hist.tipo}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right">{hist.cantidad}</td>
+                                                                </tr>
+                                                            ))
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            {/* Inline pagination controls */}
+                                            {totalMovementPages > 1 && (
+                                                <div className="flex justify-center items-center gap-2 p-3 border-t border-white/10 bg-background/60">
                                                     <Button size="sm" variant="outline" disabled={movementPage === 1} onClick={() => setMovementPage(movementPage - 1)}>
                                                         Anterior
                                                     </Button>
@@ -1705,7 +1950,7 @@ const Admin = () => {
                                                 title="Limpiar todos los filtros"
                                                 className="text-xs sm:text-sm min-h-[44px] px-3 py-2 touch-manipulation"
                                             >
-                                                <RotateCcw className="h-3 w-3 sm:h-4 sm:w-4 mr-1" /> 
+                                                
                                                 <span className="hidden sm:inline">Limpiar todo</span>
                                                 <span className="sm:hidden">Limpiar</span>
                                             </Button>
@@ -1795,7 +2040,7 @@ const Admin = () => {
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <h3 className="font-semibold text-sm sm:text-base truncate">{product.name}</h3>
-                                                            <p className="text-xs sm:text-sm text-muted-foreground">{product.category}</p>
+                                                            <p className="text-xs sm:text-sm text-muted-foreground">{product.category_name}</p>
                                                             <p className="text-sm sm:text-base font-medium text-green-600 mt-1">
                                                                 {product.price?.toLocaleString('es-CO', { style: 'currency', currency: 'COP' })}
                                                             </p>
@@ -1908,7 +2153,7 @@ const Admin = () => {
                                                                 )}
                                                             </td>
                                                             <td className="px-4 py-3 font-semibold">{product.name}</td>
-                                                            <td className="px-4 py-3">{product.category}</td>
+                                                            <td className="px-4 py-3">{product.category_name || 'Sin categoría'}</td>
                                                             <td className="px-4 py-3">
                                                                 <span className={`font-medium ${product.stock <= product.stock_minimo ? 'text-red-500' : 'text-green-600'}`}>
                                                                     {product.stock}
@@ -1992,13 +2237,13 @@ const Admin = () => {
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
                                                             <Button variant="outline" className="w-full flex justify-between items-center px-2 py-1">
-                                                                <span>{newProduct.category || 'Selecciona...'}</span>
+                                                                <span>{newProduct.category_name || 'Selecciona...'}</span>
                                                                 <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
                                                             </Button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent className="w-full">
-                                                            {['Camisetas', 'Oversize', 'Hoddies', 'Pantalon'].map(cat => (
-                                                                <DropdownMenuItem key={cat} onClick={() => setNewProduct({ ...newProduct, category: cat })}>{cat}</DropdownMenuItem>
+                                                            {categories.map(cat => (
+                                                                <DropdownMenuItem key={cat.id} onClick={() => setNewProduct({ ...newProduct, category: cat.id, category_name: cat.name })}>{cat.name}</DropdownMenuItem>
                                                             ))}
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
@@ -2052,13 +2297,13 @@ const Admin = () => {
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
                                                                 <Button variant="outline" className="w-full flex justify-between items-center px-2 py-1">
-                                                                    <span>{editProduct.category || 'Selecciona...'}</span>
+                                                                    <span>{editProduct?.category_name || 'Selecciona...'}</span>
                                                                     <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
                                                                 </Button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent className="w-full">
-                                                                {['Camisetas', 'Oversize', 'Hoddies', 'Pantalon'].map(cat => (
-                                                                    <DropdownMenuItem key={cat} onClick={() => setEditProduct({ ...editProduct, category: cat })}>{cat}</DropdownMenuItem>
+                                                                {categories.map(cat => (
+                                                                    <DropdownMenuItem key={cat.id} onClick={() => setEditProduct(editProduct ? { ...editProduct, category: cat.id, category_name: cat.name } : null)}>{cat.name}</DropdownMenuItem>
                                                                 ))}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
@@ -2191,10 +2436,12 @@ const Admin = () => {
                                                 }}>
                                                     <ResponsiveContainer width="100%" height={150}>
                                                         <ReBarChart data={
-                                                            categories.filter(cat => cat !== 'all').map(cat => ({
-                                                                name: cat,
-                                                                value: products.filter(p => p.category === cat).length
-                                                            }))
+                                                            categories
+                                                                .filter(cat => typeof cat !== 'string' && cat.id !== 'Todas')
+                                                                .map(cat => ({
+                                                                    name: cat.name,
+                                                                    value: products.filter(p => p.category === cat.id).length
+                                                                }))
                                                         }>
                                                             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
                                                             <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
@@ -2328,16 +2575,6 @@ const Admin = () => {
                                         <div className="flex flex-col sm:flex-row gap-3 pt-4">
                                             <Button 
                                                 variant="outline" 
-                                                onClick={exportToCSV} 
-                                                size="sm" 
-                                                className="w-full sm:w-auto text-xs sm:text-sm min-h-[44px] px-4 py-2 touch-manipulation"
-                                            >
-                                                <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                                                <span className="hidden sm:inline">Exportar Productos CSV</span>
-                                                <span className="sm:hidden">Productos CSV</span>
-                                            </Button>
-                                            <Button 
-                                                variant="outline" 
                                                 onClick={handleExportData} 
                                                 size="sm" 
                                                 className="w-full sm:w-auto text-xs sm:text-sm min-h-[44px] px-4 py-2 touch-manipulation"
@@ -2380,12 +2617,13 @@ const Admin = () => {
                                 <CardContent>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                                         {categories.map((category, idx) => {
-                                            const productCount = products.filter(p => p.category === category).length;
+                                            const productCount = products.filter(p => p.category === category.id).length;
+                                            const displayName = category.name;
                                             return (
-                                                <div key={idx} className="p-3 sm:p-4 bg-card/30 rounded-xl border border-white/10">
+                                                <div key={category.id} className="p-3 sm:p-4 bg-card/30 rounded-xl border border-white/10">
                                                     <div className="flex justify-between items-start gap-2">
                                                         <div className="flex-1 min-w-0">
-                                                            <h4 className="font-semibold text-sm sm:text-base truncate">{category}</h4>
+                                                            <h4 className="font-semibold text-sm sm:text-base truncate">{displayName}</h4>
                                                             <p className="text-xs sm:text-sm text-muted-foreground">
                                                                 {productCount} producto{productCount !== 1 ? 's' : ''}
                                                             </p>
@@ -2403,8 +2641,8 @@ const Admin = () => {
                                                             <DropdownMenuContent align="end">
                                                                 <DropdownMenuItem 
                                                                     onClick={() => {
-                                                                        setEditingCategory(category);
-                                                                        setEditCategoryName(category);
+                                                                        setEditingCategory(category.id);
+                                                                        setEditCategoryName(category.name);
                                                                         setShowEditCategoryModal(true);
                                                                     }}
                                                                     className="text-xs sm:text-sm"
@@ -2413,7 +2651,7 @@ const Admin = () => {
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuSeparator />
                                                                 <DropdownMenuItem 
-                                                                    onClick={() => setConfirmDeleteCategory(category)}
+                                                                    onClick={() => setConfirmDeleteCategory(category.id)}
                                                                     className="text-red-600 text-xs sm:text-sm"
                                                                     disabled={productCount > 0}
                                                                 >

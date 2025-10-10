@@ -83,11 +83,12 @@ const AuthCallback = () => {
           navigate('/complete-profile', { replace: true });
         }
 
-      } catch (error: any) {
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'No pudimos completar el inicio de sesión.';
         console.error('Error en el callback de autenticación:', error);
         toast({
           title: 'Error de autenticación',
-          description: error.message || 'No pudimos completar el inicio de sesión.',
+          description: message,
           variant: 'destructive',
         });
         navigate('/login', { replace: true });

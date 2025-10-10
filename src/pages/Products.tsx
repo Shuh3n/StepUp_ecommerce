@@ -29,7 +29,8 @@ interface Product {
   description?: string;
   price: number;
   image_url?: string;
-  category: string;
+  id_category: string; // uuid
+  category_name: string;
   created_at?: string;
   updated_at?: string;
   variants: ProductVariant[];
@@ -48,7 +49,7 @@ const Products = () => {
   const navigate = useNavigate();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 300000]); // Valor inicial temporal
   const [sortBy, setSortBy] = useState("newest");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
@@ -63,90 +64,68 @@ const Products = () => {
     const fetchProducts = async () => {
       setLoadingProducts(true);
       try {
-        console.log('[DEBUG] Iniciando fetchProducts...');
-        
-        // Primero obtenemos todos los productos (incluyendo los inactivos para debugging)
+        // 1. Traer todas las categorías
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('categories')
+          .select('id, name');
+        if (categoriesError) throw categoriesError;
+
+        // 2. Traer todos los productos
         const { data: productsData, error: productsError } = await supabase
           .from('products')
           .select('*')
           .order('id', { ascending: false });
-
-        console.log('[DEBUG] Productos obtenidos:', productsData?.length || 0);
-        console.log('[DEBUG] Datos de productos:', productsData);
-        
-        if (productsError) {
-          console.error('[DEBUG] Error al obtener productos:', productsError);
-          throw productsError;
-        }
-
+        if (productsError) throw productsError;
         if (!productsData || productsData.length === 0) {
-          console.warn('[DEBUG] No se encontraron productos en la base de datos');
           setProducts([]);
           return;
         }
 
-        // Luego obtenemos las variantes para cada producto
+        // 3. Traer variantes
         const { data: variantsData, error: variantsError } = await supabase
           .from('products_variants')
           .select('*');
-
-        console.log('[DEBUG] Variantes obtenidas:', variantsData?.length || 0);
-
         if (variantsError) {
-          console.warn('[DEBUG] Error al obtener variantes:', variantsError);
-          // Continuamos sin variantes si hay error
+          // Continuar sin variantes si hay error
         }
 
-        // Obtenemos las tallas
+        // 4. Traer tallas
         const { data: sizesData, error: sizesError } = await supabase
           .from('sizes')
           .select('*');
-
-        console.log('[DEBUG] Tallas obtenidas:', sizesData?.length || 0);
-
         if (sizesError) {
-          console.warn('[DEBUG] Error al obtener tallas:', sizesError);
+          // Continuar sin tallas si hay error
         }
 
-        // Transformamos los datos para incluir variantes y tallas
+        // 5. Mapear productos con nombre de categoría
         const transformedProducts = productsData.map(product => {
           const productVariants = variantsData?.filter(v => v.id_producto === product.id) || [];
-          
           const variantsWithSizes = productVariants.map(variant => ({
             ...variant,
             size: sizesData?.find(size => size.id_talla === variant.id_talla) || null
           }));
-
+          const categoryObj = categoriesData?.find(cat => cat.id === product.category);
           return {
             ...product,
+            id_category: product.category,
+            category_name: categoryObj ? categoryObj.name : '',
             variants: variantsWithSizes
           };
         }).filter(product => {
-          // Filtrar solo productos activos (si existe el campo active)
-          // Si no existe el campo, asumir que está activo
           return product.active !== false;
         });
 
-        console.log('[DEBUG] Productos transformados:', transformedProducts.length);
-        console.log('[DEBUG] Ejemplo de producto transformado:', transformedProducts[0]);
-        
         // Calcular precio máximo dinámicamente
         if (transformedProducts.length > 0) {
           const calculatedMaxPrice = Math.max(...transformedProducts.map(p => p.price));
-          const roundedMaxPrice = Math.ceil(calculatedMaxPrice / 50000) * 50000; // Redondear hacia arriba a múltiplos de 50k
+          const roundedMaxPrice = Math.ceil(calculatedMaxPrice / 50000) * 50000;
           setMaxPrice(roundedMaxPrice);
-          
-          // Solo actualizar el rango de precio si es la primera carga (inicial)
-          if (priceRange[1] === 300000) { // Valor inicial
+          if (priceRange[1] === 300000) {
             setPriceRange([0, roundedMaxPrice]);
           }
-          
-          console.log('[DEBUG] Precio máximo calculado:', roundedMaxPrice);
         }
-        
         setProducts(transformedProducts);
       } catch (error: unknown) {
-        console.error('[DEBUG] Error completo en fetchProducts:', error);
         const errorMessage = error instanceof Error ? error.message : 'Error desconocido';
         toast({ 
           title: 'Error al cargar productos', 
@@ -167,7 +146,6 @@ const Products = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'products' },
         (payload) => {
-          console.log('[Realtime] Cambio detectado en products:', payload);
           fetchProducts();
         }
       )
@@ -180,26 +158,26 @@ const Products = () => {
     };
   }, [toast, priceRange]);
 
-  const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
+  const categoriesList = Array.from(
+    products.reduce((acc, p) => {
+      if (p.id_category && p.category_name) acc.set(p.id_category, p.category_name);
+      return acc;
+    }, new Map<string, string>())
+  ).map(([id, name]) => ({ id, name }));
+  const categories = [{ id: 'all', name: 'Todas' }, ...categoriesList];
 
   // Permitir mostrar productos aunque no tengan variantes
   const filteredProducts = products.filter(product => {
-    const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
+    const categoryMatch = selectedCategory === "all" || product.id_category === selectedCategory;
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
-    
-    // Mejorar el filtro de tallas para incluir productos sin variantes
     let sizeMatch = true;
     if (selectedSizes.length > 0) {
       if (product.variants && product.variants.length > 0) {
-        // Si tiene variantes, verificar que al menos una coincida con la talla seleccionada
         sizeMatch = product.variants.some(v => v.size && selectedSizes.includes(v.size.talla) && v.stock > 0);
       } else {
-        // Si no tiene variantes y hay filtros de talla activos, aún mostrar el producto
-        // porque es mejor mostrar productos sin variantes que ocultarlos completamente
-        sizeMatch = true; // Cambiado de false a true para mostrar productos sin variantes
+        sizeMatch = true;
       }
     }
-    
     return categoryMatch && priceMatch && sizeMatch;
   });
 
@@ -224,7 +202,7 @@ const Products = () => {
         name: product.name,
         price: product.price,
         image: product.image_url || '',
-        category: product.category,
+  category: product.category_name || '',
         quantity: 1
       };
       
@@ -359,7 +337,7 @@ const Products = () => {
                         name={product.name}
                         price={product.price}
                         image={product.image_url}
-                        category={product.category}
+                        category={product.category_name || ''}
                         variants={product.variants || []}
                         onAddToCart={() => handleAddToCart(product)}
                         onClick={() => handleProductClick(product)}

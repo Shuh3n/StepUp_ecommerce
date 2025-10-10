@@ -291,31 +291,34 @@ export default function Register() {
         } 
       });
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Registration error:', err);
       
       let errorMessage = 'Error al crear la cuenta. Intenta nuevamente.';
       
-      if (err.message.includes('cédula ya está registrada')) {
+      const message = err instanceof Error ? err.message : '';
+      const code = (err as { code?: string } | undefined)?.code;
+
+      if (message.includes('cédula ya está registrada')) {
         errorMessage = 'Esta cédula ya está registrada en el sistema.';
       } 
-      else if (err.message.includes('email ya está registrado')) {
+      else if (message.includes('email ya está registrado')) {
         errorMessage = 'Este email ya está registrado en el sistema.';
       }
-      else if (err.message.includes('teléfono ya está registrado')) {
+      else if (message.includes('teléfono ya está registrado')) {
         errorMessage = 'Este teléfono ya está registrado en el sistema.';
       }
-      else if (err.message.includes('already registered')) {
+      else if (message.includes('already registered')) {
         errorMessage = 'Este email ya tiene una cuenta registrada.';
       }
-      else if (err.code === '23505') {
+      else if (code === '23505') {
         errorMessage = 'Los datos ingresados ya existen en el sistema.';
       }
-      else if (err.code === '42501') {
+      else if (code === '42501') {
         errorMessage = 'Error de permisos. Contacta al administrador.';
       }
-      else if (err.message) {
-        errorMessage = err.message;
+      else if (message) {
+        errorMessage = message;
       }
 
       toast({

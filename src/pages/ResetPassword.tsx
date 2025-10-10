@@ -57,11 +57,12 @@ const ResetPassword = () => {
         navigate("/login");
       }, 2000);
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error updating password:', error);
+      const message = error instanceof Error ? error.message : "No se pudo actualizar la contraseña";
       toast({
         title: "Error",
-        description: error.message || "No se pudo actualizar la contraseña",
+        description: message,
         variant: "destructive",
       });
     } finally {

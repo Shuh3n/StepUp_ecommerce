@@ -5,8 +5,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Filter, X } from "lucide-react";
 
+interface CategoryOption {
+  id: string;
+  name: string;
+}
 interface ProductFiltersProps {
-  categories: string[];
+  categories: CategoryOption[];
   selectedCategory: string;
   onCategoryChange: (category: string) => void;
   priceRange: [number, number];
@@ -15,8 +19,8 @@ interface ProductFiltersProps {
   onSortChange: (sort: string) => void;
   selectedSizes: string[];
   onSizeChange: (sizes: string[]) => void;
-  onClearFilters: () => void;
-  maxPrice?: number; // Nuevo prop opcional para el precio máximo
+  onClearFilters?: () => void;
+  maxPrice?: number;
 }
 
 const ProductFilters = ({
@@ -47,6 +51,7 @@ const ProductFilters = ({
                           priceRange[0] > 0 || 
                           priceRange[1] < maxPrice || 
                           selectedSizes.length > 0;
+  
 
   return (
     <div className="space-y-6">
@@ -75,11 +80,6 @@ const ProductFilters = ({
         {/* Header */}
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Filtros</h3>
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={onClearFilters}>
-              Limpiar todo
-            </Button>
-          )}
         </div>
 
         {/* Sort */}
@@ -106,10 +106,9 @@ const ProductFilters = ({
               <SelectValue placeholder="Seleccionar categoría" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas las categorías</SelectItem>
-              {categories.filter(cat => cat !== "all").map(category => (
-                <SelectItem key={category} value={category}>
-                  {category}
+              {categories.map(cat => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
                 </SelectItem>
               ))}
             </SelectContent>

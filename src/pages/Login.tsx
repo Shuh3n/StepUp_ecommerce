@@ -112,11 +112,12 @@ const Login = () => {
       // El redireccionamiento se manejará automáticamente en el useEffect
       // a través del listener onAuthStateChange
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error signing in:', error);
+      const message = error instanceof Error ? error.message : "No se pudo iniciar sesión";
       toast({
         title: "Error",
-        description: error.message || "No se pudo iniciar sesión",
+        description: message,
         variant: "destructive",
       });
     }
@@ -132,11 +133,12 @@ const Login = () => {
       });
       
       if (error) throw error;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error signing in with Google:', error);
+      const message = error instanceof Error ? error.message : "No se pudo iniciar sesión con Google";
       toast({
         title: "Error",
-        description: error.message || "No se pudo iniciar sesión con Google",
+        description: message,
         variant: "destructive",
       });
     }
@@ -201,7 +203,7 @@ const Login = () => {
           </div>
 
           <CardContent className="px-8 pb-8">
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
               <div className="space-y-2">
                 <Label htmlFor="email">Correo electrónico</Label>
                 <Input
@@ -212,6 +214,7 @@ const Login = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   className="glass border-white/20"
                   required
+                  autoComplete="off"
                 />
               </div>
               
@@ -226,6 +229,7 @@ const Login = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     className="glass border-white/20 pr-10"
                     required
+                    autoComplete="new-password"
                   />
                   <Button
                     type="button"

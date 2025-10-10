@@ -7,7 +7,7 @@ import { useState, useEffect } from "react";
 interface FavoritesModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddToCart?: (product: any) => void;
+  onAddToCart?: (product: FavoriteProduct & { quantity: number }) => void;
 }
 
 interface FavoriteProduct {
@@ -44,8 +44,11 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
         id: product.id,
         name: product.name,
         price: product.price,
+        originalPrice: product.originalPrice,
         image: product.image,
         category: product.category,
+        rating: product.rating,
+        isNew: product.isNew,
         quantity: 1,
       });
     }

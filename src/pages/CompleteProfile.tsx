@@ -15,7 +15,7 @@ const PhoneRequest = () => {
   const [isChecking, setIsChecking] = useState(false);
   const [phoneError, setPhoneError] = useState("");
   const [identificationError, setIdentificationError] = useState("");
-  const [userSession, setUserSession] = useState<any>(null);
+  const [userSession, setUserSession] = useState<{ user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> } } | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -151,7 +151,7 @@ const PhoneRequest = () => {
     }
 
     // Validar formato básico de teléfono
-    if (!/^[\d\s\+\-\(\)]+$/.test(phone)) {
+    if (!/^[\d\s+\-()]+$/.test(phone)) {
       setPhoneError("Formato de teléfono inválido");
       return;
     }
@@ -289,11 +289,12 @@ const PhoneRequest = () => {
       //   navigate('/profile', { replace: true });
       // }, 100);
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error in handleSubmit:', error);
+      const message = error instanceof Error ? error.message : "No se pudo guardar la información. Por favor, intenta de nuevo.";
       toast({
         title: "Error",
-        description: error.message || "No se pudo guardar la información. Por favor, intenta de nuevo.",
+        description: message,
         variant: "destructive",
       });
     } finally {

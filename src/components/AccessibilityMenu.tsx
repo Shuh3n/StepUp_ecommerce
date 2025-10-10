@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Minus, Plus, Type, X, RotateCcw, Contrast, FileText, Keyboard, Accessibility } from "lucide-react";
@@ -12,23 +12,7 @@ const AccessibilityMenu = () => {
   const [highContrast, setHighContrast] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
 
-  useEffect(() => {
-    // Load settings from localStorage
-    const savedSettings = localStorage.getItem('accessibility-settings');
-    if (savedSettings) {
-      const settings = JSON.parse(savedSettings);
-      setFontSize(settings.fontSize || 100);
-      setTextOnly(settings.textOnly || false);
-      setHighContrast(settings.highContrast || false);
-      applySettings(settings);
-    }
-  }, []);
-
-  const saveSettings = (settings: any) => {
-    localStorage.setItem('accessibility-settings', JSON.stringify(settings));
-  };
-
-  const applySettings = (settings: any) => {
+  const applySettings = (settings: AccessibilitySettings) => {
     document.documentElement.style.fontSize = `${settings.fontSize || 100}%`;
     
     if (settings.textOnly) {
@@ -44,38 +28,57 @@ const AccessibilityMenu = () => {
     }
   };
 
-  const adjustFontSize = (increment: number) => {
+  const applySettingsCb = useCallback(applySettings, []);
+
+  useEffect(() => {
+    // Load settings from localStorage
+    const savedSettings = localStorage.getItem('accessibility-settings');
+    if (savedSettings) {
+      const settings = JSON.parse(savedSettings);
+      setFontSize(settings.fontSize || 100);
+      setTextOnly(settings.textOnly || false);
+      setHighContrast(settings.highContrast || false);
+      applySettingsCb(settings);
+    }
+  }, [applySettingsCb]);
+
+  type AccessibilitySettings = { fontSize: number; textOnly: boolean; highContrast: boolean };
+  const saveSettings = useCallback((settings: AccessibilitySettings) => {
+    localStorage.setItem('accessibility-settings', JSON.stringify(settings));
+  }, []);
+
+  const adjustFontSize = useCallback((increment: number) => {
     const newSize = Math.max(80, Math.min(150, fontSize + increment));
     setFontSize(newSize);
-    const settings = { fontSize: newSize, textOnly, highContrast };
-    applySettings(settings);
+    const settings = { fontSize: newSize, textOnly, highContrast } as AccessibilitySettings;
+    applySettingsCb(settings);
     saveSettings(settings);
-  };
+  }, [fontSize, textOnly, highContrast, applySettingsCb, saveSettings]);
 
-  const toggleTextOnly = () => {
+  const toggleTextOnly = useCallback(() => {
     const newValue = !textOnly;
     setTextOnly(newValue);
-    const settings = { fontSize, textOnly: newValue, highContrast };
-    applySettings(settings);
+    const settings = { fontSize, textOnly: newValue, highContrast } as AccessibilitySettings;
+    applySettingsCb(settings);
     saveSettings(settings);
-  };
+  }, [textOnly, fontSize, highContrast, applySettingsCb, saveSettings]);
 
-  const toggleHighContrast = () => {
+  const toggleHighContrast = useCallback(() => {
     const newValue = !highContrast;
     setHighContrast(newValue);
-    const settings = { fontSize, textOnly, highContrast: newValue };
-    applySettings(settings);
+    const settings = { fontSize, textOnly, highContrast: newValue } as AccessibilitySettings;
+    applySettingsCb(settings);
     saveSettings(settings);
-  };
+  }, [highContrast, fontSize, textOnly, applySettingsCb, saveSettings]);
 
-  const resetAllSettings = () => {
+  const resetAllSettings = useCallback(() => {
     const defaultSettings = { fontSize: 100, textOnly: false, highContrast: false };
     setFontSize(100);
     setTextOnly(false);
     setHighContrast(false);
-    applySettings(defaultSettings);
+    applySettingsCb(defaultSettings as AccessibilitySettings);
     saveSettings(defaultSettings);
-  };
+  }, [applySettingsCb, saveSettings]);
 
   const handleOpen = () => {
     setIsAnimating(false);
@@ -148,7 +151,7 @@ const AccessibilityMenu = () => {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isOpen, fontSize, textOnly, highContrast]);
+  }, [isOpen, adjustFontSize, resetAllSettings, toggleHighContrast, toggleTextOnly]);
 
   return (
     <>

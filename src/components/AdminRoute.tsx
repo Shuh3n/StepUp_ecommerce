@@ -10,7 +10,7 @@ interface Props {
 const AdminRoute: React.FC<Props> = ({ children }) => {
   console.log('AdminRoute montado');
   const [loading, setLoading] = useState(true);
-  const [admin, setAdmin] = useState<any>(null);
+  const [admin, setAdmin] = useState<{ auth_id: string } | null>(null);
 
   useEffect(() => {
     const checkAdmin = async () => {
@@ -25,7 +25,7 @@ const AdminRoute: React.FC<Props> = ({ children }) => {
 
       const { data: adminData, error } = await supabase
         .from('admins')
-        .select('*')
+        .select('auth_id')
         .eq('auth_id', session.user.id)
         .maybeSingle();
 

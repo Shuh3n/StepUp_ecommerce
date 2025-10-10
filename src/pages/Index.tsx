@@ -56,7 +56,7 @@ const Index = () => {
     const fetchProducts = async () => {
       setLoadingProducts(true);
       try {
-        // Traer productos con join a products_variants
+        // Traer productos con join a categories (usando category como referencia) y products_variants
         const { data: productsData, error: productsError } = await supabase
           .from('products')
           .select(`
@@ -65,8 +65,9 @@ const Index = () => {
             description,
             price,
             image_url,
-            category,
             created_at,
+            category,
+            categories:category(name),
             products_variants (
               id_variante,
               id_producto,
@@ -79,9 +80,10 @@ const Index = () => {
 
         if (productsError) throw productsError;
 
-        // Transformar para que todos tengan variants
+        // Transformar para que todos tengan variants y el nombre de la categoría
         const featured = productsData?.map(product => ({
           ...product,
+          category: product.categories?.name || 'Sin categoría',
           variants: Array.isArray(product.products_variants)
             ? product.products_variants
             : []

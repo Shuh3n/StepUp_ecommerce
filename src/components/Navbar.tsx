@@ -21,17 +21,35 @@ interface NavbarProps {
   onFavoritesClick: () => void;
 }
 
+
 const Navbar = ({ 
   cartItems, 
   onCartClick, 
   onContactClick,
   onFavoritesClick
 }: NavbarProps) => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
   const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      if (user) {
+        const { data, error } = await supabase
+          .from('admins')
+          .select('auth_id')
+          .eq('auth_id', user.id)
+          .maybeSingle();
+        setIsAdmin(!!data);
+      } else {
+        setIsAdmin(false);
+      }
+    };
+    checkAdmin();
+  }, [user]);
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
@@ -41,7 +59,7 @@ const Navbar = ({
     }
   };
 
-  const handleAddToCart = (product: any) => {
+  const handleAddToCart = (product: { id: number; name: string; price: number; image: string; category: string; quantity: number; rating?: number; originalPrice?: number; isNew?: boolean; }) => {
     setIsFavoritesModalOpen(false);
   };
 
@@ -122,6 +140,15 @@ const Navbar = ({
                 <Mail className="h-4 w-4" />
                 Contacto
               </button>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  className="text-primary border-primary hover:bg-primary/10"
+                  onClick={() => navigate('/admin')}
+                >
+                  Panel Administración
+                </Button>
+              )}
             </div>
 
             <div className="flex items-center space-x-3">
@@ -188,6 +215,15 @@ const Navbar = ({
                   <Mail className="h-4 w-4" />
                   Contacto
                 </button>
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    className="w-full text-primary border-primary hover:bg-primary/10 mt-2"
+                    onClick={() => { setIsMenuOpen(false); navigate('/admin'); }}
+                  >
+                    Panel Admin
+                  </Button>
+                )}
                 <button
                   type="button"
                   onClick={() => setIsFavoritesModalOpen(true)}
