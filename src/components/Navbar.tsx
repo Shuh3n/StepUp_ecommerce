@@ -146,7 +146,7 @@ const Navbar = ({
                   className="text-primary border-primary hover:bg-primary/10"
                   onClick={() => navigate('/admin')}
                 >
-                  Panel Administración
+                  Abrir panel de administración
                 </Button>
               )}
             </div>

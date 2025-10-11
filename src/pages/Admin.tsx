@@ -37,7 +37,7 @@ import {
     DropdownMenuItem,
     DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { ChevronDown, Download, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, Download, Eye, EyeOff, RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -107,6 +107,12 @@ interface EditProduct {
 
 // Si quieres también puedes definir Order aquí...
 
+// Tallas para variantes
+interface SizeOption {
+    id_talla: number;
+    nombre_talla: string;
+}
+
 const Admin = () => {
     const { toast } = useToast();
     
@@ -144,8 +150,15 @@ const Admin = () => {
         }
         // Obtener la URL pública de la imagen subida
         const publicUrl = supabase.storage.from('product-images').getPublicUrl(fileName).data.publicUrl;
+        // Validar suma de variantes
+        const totalVariants = Object.values(variantStocks).reduce((sum, v) => sum + (Number.isFinite(v) ? Number(v) : 0), 0);
+        if (totalVariants > newProduct.stock) {
+            toast({ title: 'Stock por tallas inválido', description: 'La suma de cantidades por talla no puede exceder el stock total.', variant: 'destructive' });
+            return;
+        }
+
         // Crear producto en Supabase con la URL pública de la imagen
-        const { error: insertError } = await supabase.from('products').insert({
+        const { data: insertedProduct, error: insertError } = await supabase.from('products').insert({
             name: newProduct.name,
             category: newProduct.category,
             stock: newProduct.stock,
@@ -154,12 +167,33 @@ const Admin = () => {
             image_url: publicUrl, // Usar publicUrl correctamente
             description: newProduct.description,
             active: true // Asegurar que el producto se crea como activo
-        });
-        if (!insertError) {
+        }).select('id').single();
+        if (!insertError && insertedProduct?.id) {
+            const newProductId = insertedProduct.id as number;
+            // Insertar variantes con stock > 0
+            const variantsToInsert = availableSizes
+                .map(s => ({ id_talla: s.id_talla, qty: Number(variantStocks[s.id_talla] || 0) }))
+                .filter(v => v.qty > 0)
+                .map(v => ({
+                    id_producto: newProductId,
+                    id_talla: v.id_talla,
+                    codigo_sku: `SKU-${newProductId}-${v.id_talla}`,
+                    stock: v.qty,
+                    precio_ajuste: 0
+                }));
+            if (variantsToInsert.length > 0) {
+                const { error: variantsError } = await supabase
+                    .from('products_variants')
+                    .insert(variantsToInsert);
+                if (variantsError) {
+                    toast({ title: 'Producto creado con advertencia', description: 'Se creó el producto, pero ocurrió un error al crear variantes.', variant: 'destructive' });
+                }
+            }
             toast({ title: 'Producto creado exitosamente' });
             setShowCreateProductModal(false);
             setNewProduct({ name: '', category: '', category_name: '', stock: 1, stock_minimo: 0, price: 0, image_url: '', description: '' });
             setImageFile(null);
+            setVariantStocks({});
             setProductsPage(1); // Regresar a la primera página para ver el nuevo producto
             // Pequeño delay para asegurar que la base de datos procese la inserción
             setTimeout(async () => {
@@ -221,18 +255,30 @@ const Admin = () => {
     const [nameError, setNameError] = useState<string | null>(null);
     const [imageError, setImageError] = useState<string | null>(null);
     const [imageFile, setImageFile] = useState<File | null>(null);
+    // Tallas/variantes para creación
+    const [availableSizes, setAvailableSizes] = useState<SizeOption[]>([]);
+    const [variantStocks, setVariantStocks] = useState<Record<number, number>>({});
+    const [sizesLoading, setSizesLoading] = useState<boolean>(false);
+    const [sizesError, setSizesError] = useState<string | null>(null);
 
     // Estado para edición de producto
     const [editProduct, setEditProduct] = useState<EditProduct | null>(null);
     const [editNameError, setEditNameError] = useState<string | null>(null);
     const [editImageError, setEditImageError] = useState<string | null>(null);
     const [editImageFile, setEditImageFile] = useState<File | null>(null);
+    const [editVariantStocks, setEditVariantStocks] = useState<Record<number, number>>({});
 
     // Filtros de productos - inicializados con valores por defecto
     const [filterCategory, setFilterCategory] = useState<string>("all");
     const [filterPrice, setFilterPrice] = useState<[number, number]>([0, 500000]);
     const [filterActive, setFilterActive] = useState<string>("all");
     const [sortBy, setSortBy] = useState<string>("newest");
+    // Filtros de tallas (desde BD)
+    const [sizesForFilters, setSizesForFilters] = useState<string[]>([]);
+    const [selectedSizesFilter, setSelectedSizesFilter] = useState<string[]>([]);
+    const [sizeIdToName, setSizeIdToName] = useState<Record<number, string>>({});
+    const [variantsByProduct, setVariantsByProduct] = useState<Record<number, string[]>>({});
+    const [variantsReady, setVariantsReady] = useState<boolean>(false);
     // Para exportar CSV (compatibilidad con Excel: UTF-8 BOM, ; como separador, CRLF)
     const exportToCSV = () => {
         // Delimitador preferido por Excel en configuraciones regionales ES/CO
@@ -293,6 +339,8 @@ const Admin = () => {
         setEditNameError(null);
         setEditImageError(null);
         setEditImageFile(null);
+        // Preparar stocks por talla para edición (se cargarán al abrir el modal)
+        setEditVariantStocks({});
     };
 
     // Handler para cambio de imagen en edición
@@ -328,7 +376,7 @@ const Admin = () => {
             }
             imageUrl = supabase.storage.from('product-images').getPublicUrl(fileName).data.publicUrl;
         }
-        // Actualizar en Supabase
+        // Actualizar en Supabase (producto)
         const { error: updateError } = await supabase.from('products').update({
             name: editProduct.name,
             category: editProduct.category,
@@ -339,6 +387,29 @@ const Admin = () => {
             description: editProduct.description
         }).eq('id', editProduct.id);
         if (!updateError) {
+            // Persistir variantes: eliminar existentes y re-insertar las con stock > 0
+            try {
+                await supabase.from('products_variants').delete().eq('id_producto', editProduct.id);
+                const variantsToInsert = availableSizes
+                    .map(s => ({ id_talla: s.id_talla, qty: Number(editVariantStocks[s.id_talla] || 0) }))
+                    .filter(v => v.qty > 0)
+                    .map(v => ({
+                        id_producto: editProduct.id,
+                        id_talla: v.id_talla,
+                        codigo_sku: `SKU-${editProduct.id}-${v.id_talla}`,
+                        stock: v.qty,
+                        precio_ajuste: 0
+                    }));
+                if (variantsToInsert.length > 0) {
+                    const { error: vErr } = await supabase.from('products_variants').insert(variantsToInsert);
+                    if (vErr) {
+                        toast({ title: 'Producto actualizado con advertencia', description: 'No se pudieron actualizar las variantes.', variant: 'destructive' });
+                    }
+                }
+            } catch (err) {
+                // No bloquear la actualización del producto por fallos en variantes
+                console.error('Error actualizando variantes:', err);
+            }
             toast({ title: 'Producto actualizado' });
             setEditProduct(null);
             fetchProducts();
@@ -425,10 +496,34 @@ const Admin = () => {
             toast({ title: 'Error al actualizar estado', description: error.message, variant: 'destructive' });
         }
     };
+    // Categorías (debe declararse antes de usar en filtros)
+    const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
     // Filtros y ordenamiento
+    // Detectar si existe una categoría en BD llamada "Todos/Todas/All" y tratarla como "all"
+    const dbAllCategoryId = React.useMemo(() => {
+        const found = categories.find(cat => {
+            const n = (cat.name || '').trim().toLowerCase();
+            return n === 'todos' || n === 'todas' || n === 'all';
+        });
+        return found ? found.id : null;
+    }, [categories]);
+    const effectiveCategory = (filterCategory === 'all' || (dbAllCategoryId && filterCategory === dbAllCategoryId)) ? 'all' : filterCategory;
+    // Si existe categoría "Todos/Todas/All" en DB, usarla como predeterminada en el filtro
+    useEffect(() => {
+        if (dbAllCategoryId && filterCategory === 'all') {
+            setFilterCategory(dbAllCategoryId);
+        }
+    }, [dbAllCategoryId, filterCategory]);
     const filteredProducts = products
-    .filter(p => filterCategory === "all" || p.category === filterCategory)
+    .filter(p => effectiveCategory === "all" || p.category === effectiveCategory)
         .filter(p => p.price >= filterPrice[0] && p.price <= filterPrice[1])
+        // Filtrar por tallas seleccionadas solo cuando tengamos variantes cargadas
+        .filter(p => {
+            if (selectedSizesFilter.length === 0) return true;
+            if (!variantsReady) return true; // evitar ocultar productos mientras se cargan variantes
+            const vars = variantsByProduct[p.id] || [];
+            return vars.some(vn => selectedSizesFilter.includes(vn));
+        })
         .filter(p => {
             if (filterActive === "all") return true;
             if (filterActive === "active") return p.active !== false; // incluye undefined/null como activo
@@ -441,7 +536,6 @@ const Admin = () => {
             if (sortBy === "newest") return b.id - a.id;
             return 0;
         });
-    const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
     // Cargar categorías desde Supabase
     useEffect(() => {
@@ -457,6 +551,168 @@ const Admin = () => {
         };
         fetchCategories();
     }, []);
+
+    // Carga de tallas desde BD (tabla sizes)
+    const fetchSizes = useCallback(async () => {
+        try {
+            setSizesLoading(true);
+            setSizesError(null);
+            const { data, error } = await supabase
+                .from('sizes')
+                .select('id_talla, nombre_talla')
+                .order('id_talla', { ascending: true });
+            if (error) {
+                setAvailableSizes([]);
+                setSizesError(error.message);
+                toast({ title: 'Error al cargar tallas', description: error.message, variant: 'destructive' });
+                return; // finally se encarga de apagar loading
+            }
+            const sizes = (data || []) as SizeOption[];
+            setAvailableSizes(sizes);
+            setVariantStocks(prev => {
+                const next = { ...prev } as Record<number, number>;
+                sizes.forEach(s => { if (next[s.id_talla] === undefined) next[s.id_talla] = 0; });
+                return next;
+            });
+            // También preparar tallas para filtros (nombres) y mapa id->nombre
+            const idToName: Record<number, string> = {};
+            const names: string[] = [];
+            sizes.forEach(s => {
+                idToName[s.id_talla] = s.nombre_talla;
+                names.push(s.nombre_talla);
+            });
+            setSizeIdToName(idToName);
+            setSizesForFilters(names);
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Error desconocido obteniendo tallas';
+            setSizesError(msg);
+            toast({ title: 'Error al cargar tallas', description: msg, variant: 'destructive' });
+        } finally {
+            setSizesLoading(false);
+        }
+    }, [toast]);
+
+    // Cargar tallas cuando se abre el modal de crear producto
+    useEffect(() => {
+        if (showCreateProductModal) fetchSizes();
+    }, [showCreateProductModal, fetchSizes]);
+
+    // Cargar tallas para filtros al montar (si aún no están cargadas)
+    useEffect(() => {
+        const loadSizesForFilters = async () => {
+            try {
+                // Reutilizamos fetchSizes si aún no hay tallas cargadas
+                if (sizesForFilters.length === 0) {
+                    const { data, error } = await supabase
+                        .from('sizes')
+                        .select('id_talla, nombre_talla')
+                        .order('id_talla', { ascending: true });
+                    if (!error && data) {
+                        const idToName: Record<number, string> = {};
+                        const names = (data as { id_talla: number; nombre_talla: string }[]).map(s => {
+                            idToName[s.id_talla] = s.nombre_talla;
+                            return s.nombre_talla;
+                        });
+                        setSizeIdToName(idToName);
+                        setSizesForFilters(names);
+                    }
+                }
+            } catch {
+                // silencioso para no interrumpir la vista
+            }
+        };
+        loadSizesForFilters();
+    }, [sizesForFilters.length]);
+
+    // Cargar variantes para todos los productos visibles (mapa productId -> nombres de talla)
+    useEffect(() => {
+        const loadVariants = async () => {
+            try {
+                setVariantsReady(false);
+                if (products.length === 0) {
+                    setVariantsByProduct({});
+                    setVariantsReady(true);
+                    return;
+                }
+                const productIds = products.map(p => p.id);
+                const { data, error } = await supabase
+                    .from('products_variants')
+                    .select('id_producto, id_talla, stock')
+                    .in('id_producto', productIds);
+                if (error) {
+                    setVariantsByProduct({});
+                    setVariantsReady(true);
+                    return;
+                }
+                const byProduct: Record<number, Set<string>> = {};
+                (data || []).forEach((v: { id_producto: number; id_talla: number; stock: number }) => {
+                    // Considerar solo tallas con stock > 0 para el filtro
+                    if (v.stock <= 0) return;
+                    const name = sizeIdToName[v.id_talla];
+                    if (!name) return;
+                    if (!byProduct[v.id_producto]) byProduct[v.id_producto] = new Set<string>();
+                    byProduct[v.id_producto].add(name);
+                });
+                const result: Record<number, string[]> = {};
+                Object.keys(byProduct).forEach(pid => {
+                    result[Number(pid)] = Array.from(byProduct[Number(pid)]);
+                });
+                setVariantsByProduct(result);
+            } finally {
+                setVariantsReady(true);
+            }
+        };
+        // Ejecutar cuando cambian los productos o el mapa de tallas
+        loadVariants();
+    }, [products, sizeIdToName]);
+
+    // Cargar tallas y variantes cuando se abre el modal de editar producto
+    useEffect(() => {
+        const loadEditVariants = async () => {
+            if (!editProduct) return;
+            try {
+                // Asegurar tallas cargadas (sin depender de availableSizes para evitar loops)
+                let sizes = availableSizes;
+                if (!sizes || sizes.length === 0) {
+                    setSizesLoading(true);
+                    const { data: sizesData, error: sizesErr } = await supabase
+                        .from('sizes')
+                        .select('id_talla, nombre_talla')
+                        .order('id_talla', { ascending: true });
+                    if (!sizesErr && sizesData) {
+                        sizes = sizesData as SizeOption[];
+                        setAvailableSizes(sizes);
+                    } else if (sizesErr) {
+                        setSizesError(sizesErr.message);
+                        toast({ title: 'Error al cargar tallas', description: sizesErr.message, variant: 'destructive' });
+                    }
+                    setSizesLoading(false);
+                }
+
+                // Obtener variantes actuales del producto
+                const { data, error } = await supabase
+                    .from('products_variants')
+                    .select('id_talla, stock')
+                    .eq('id_producto', editProduct.id);
+                if (!error) {
+                    const map: Record<number, number> = {};
+                    (data || []).forEach((v: { id_talla: number; stock: number }) => { map[v.id_talla] = v.stock || 0; });
+                    const baseSizes = sizes || [];
+                    setEditVariantStocks(() => {
+                        const next: Record<number, number> = {};
+                        baseSizes.forEach(s => { next[s.id_talla] = map[s.id_talla] ?? 0; });
+                        return next;
+                    });
+                }
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : 'Error desconocido cargando variantes';
+                toast({ title: 'Error', description: msg, variant: 'destructive' });
+            }
+        };
+        if (editProduct) loadEditVariants();
+        // Intencionalmente sin dependencias de availableSizes/fetchSizes para evitar bucles
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editProduct]);
 
     // Calcular rango dinámico de precios basado en productos reales
     const maxPrice = products.length > 0 ? Math.max(...products.map(p => p.price)) : 500000;
@@ -508,10 +764,12 @@ const Admin = () => {
     // Funciones para gestión de categorías
     const handleCreateCategory = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newCategoryName.trim()) return;
-        
-        // Verificar si la categoría ya existe
-    if (categories.some(cat => cat.name === newCategoryName)) {
+        const name = newCategoryName.trim();
+        if (!name) return;
+
+        // Verificar si la categoría ya existe (insensible a mayúsculas/minúsculas)
+        const exists = categories.some(cat => (cat.name || '').trim().toLowerCase() === name.toLowerCase());
+        if (exists) {
             toast({ 
                 title: 'Error', 
                 description: 'Ya existe una categoría con ese nombre',
@@ -520,23 +778,40 @@ const Admin = () => {
             return;
         }
 
-        // En un caso real, guardarías esto en la base de datos
-        // Por ahora lo agregamos localmente
-        toast({ 
-            title: 'Categoría creada', 
-            description: `La categoría "${newCategoryName}" ha sido creada exitosamente`
-        });
-        
+        // Guardar en la base de datos
+        const { data, error } = await supabase
+            .from('categories')
+            .insert({ name })
+            .select('id, name')
+            .single();
+
+        if (error) {
+            toast({ 
+                title: 'Error', 
+                description: error.message,
+                variant: 'destructive'
+            });
+            return;
+        }
+
+        // Actualizar estado local y limpiar formulario
+        setCategories(prev => [...prev, { id: data.id, name: data.name }]);
         setNewCategoryName('');
         setShowCreateCategoryModal(false);
+        toast({ 
+            title: 'Categoría creada', 
+            description: `La categoría "${data.name}" ha sido creada exitosamente`
+        });
     };
 
     const handleEditCategory = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!editCategoryName.trim() || !editingCategory) return;
-        
-        // Verificar si la nueva categoría ya existe
-    if (categories.some(cat => cat.name === editCategoryName) && editCategoryName !== editingCategory) {
+        const name = editCategoryName.trim();
+        if (!name || !editingCategory) return;
+
+        // Verificar si la nueva categoría ya existe (ignorando la actual)
+        const exists = categories.some(cat => cat.id !== editingCategory && (cat.name || '').trim().toLowerCase() === name.toLowerCase());
+        if (exists) {
             toast({ 
                 title: 'Error', 
                 description: 'Ya existe una categoría con ese nombre',
@@ -545,17 +820,28 @@ const Admin = () => {
             return;
         }
 
-        // Actualizar productos que tenían la categoría anterior
+        // Actualizar en la base de datos
+        const { error } = await supabase
+            .from('categories')
+            .update({ name })
+            .eq('id', editingCategory);
+        if (error) {
+            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            return;
+        }
+
+        // Actualizar estado local: categorías y productos mostrados
+        setCategories(prev => prev.map(c => c.id === editingCategory ? { ...c, name } : c));
         const updatedProducts = products.map(p => 
             p.category === editingCategory 
-                ? { ...p, category: editingCategory, category_name: editCategoryName }
+                ? { ...p, category: editingCategory, category_name: name }
                 : p
         );
         setProducts(updatedProducts);
 
         toast({ 
             title: 'Categoría actualizada', 
-            description: `La categoría ha sido renombrada a "${editCategoryName}"`
+            description: `La categoría ha sido renombrada a "${name}"`
         });
         
         setEditingCategory(null);
@@ -565,21 +851,38 @@ const Admin = () => {
 
     const handleDeleteCategory = async () => {
         if (!confirmDeleteCategory) return;
+        const categoryName = categories.find(c => c.id === confirmDeleteCategory)?.name || confirmDeleteCategory;
         
         // Verificar que no hay productos con esta categoría
     const productsWithCategory = products.filter(p => p.category === confirmDeleteCategory);
         if (productsWithCategory.length > 0) {
             toast({ 
                 title: 'Error', 
-                description: 'No se puede eliminar una categoría que tiene productos asignados',
+                description: `No se puede eliminar la categoría "${categoryName}" porque tiene productos asignados`,
                 variant: 'destructive'
             });
             return;
         }
 
+        // Eliminar de la base de datos
+        const { error } = await supabase
+            .from('categories')
+            .delete()
+            .eq('id', confirmDeleteCategory);
+        if (error) {
+            toast({ title: 'Error', description: error.message, variant: 'destructive' });
+            return;
+        }
+
+        // Actualizar estado local y filtros si estaban apuntando a la categoría eliminada
+        setCategories(prev => prev.filter(c => c.id !== confirmDeleteCategory));
+        if (filterCategory === confirmDeleteCategory) {
+            setFilterCategory(dbAllCategoryId ?? 'all');
+        }
+
         toast({ 
             title: 'Categoría eliminada', 
-            description: `La categoría "${confirmDeleteCategory}" ha sido eliminada`
+            description: `La categoría "${categoryName}" ha sido eliminada con éxito`
         });
         
         setConfirmDeleteCategory(null);
@@ -628,12 +931,15 @@ const Admin = () => {
         const invRows = inventoryMovements.map(h => [h.id, h.product_id, h.product_name, h.tipo, h.cantidad, h.fecha, h.usuario_nombre || ""]);
         const invCsv = buildCsv(invHeaders, invRows);
 
-        // Crear ZIP y descargar
+    // Crear ZIP y descargar
         const zip = new JSZip();
-        zip.file("productos.csv", productsCsv);
-        zip.file("usuarios.csv", usersCsv);
-        zip.file("pedidos.csv", ordersCsv);
-        zip.file("inventario.csv", invCsv);
+    const now = new Date();
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const ts = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    zip.file(`productos-${ts}.csv`, productsCsv);
+    zip.file(`usuarios-${ts}.csv`, usersCsv);
+    zip.file(`pedidos-${ts}.csv`, ordersCsv);
+    zip.file(`inventario-${ts}.csv`, invCsv);
         const content = await zip.generateAsync({ type: "blob" });
         const url = URL.createObjectURL(content);
         const a = document.createElement('a');
@@ -775,6 +1081,7 @@ const Admin = () => {
     // Usuarios: búsqueda, filtro y paginación
     const [userSearch, setUserSearch] = useState('');
     const [userVerifiedFilter, setUserVerifiedFilter] = useState<'all' | 'verified' | 'unverified'>('all');
+    const [userSort, setUserSort] = useState<'name-asc' | 'name-desc' | 'created-newest' | 'created-oldest'>('created-newest');
     const [usersPage, setUsersPage] = useState(1);
     const usersPerPage = 10;
     const filteredUsers = React.useMemo(() => {
@@ -783,20 +1090,36 @@ const Admin = () => {
         if (q) {
             list = list.filter(u =>
                 (u.full_name || '').toLowerCase().includes(q) ||
-                (u.email || '').toLowerCase().includes(q)
+                (u.email || '').toLowerCase().includes(q) ||
+                (u.phone || '').toLowerCase().includes(q)
             );
         }
         if (userVerifiedFilter === 'verified') list = list.filter(u => u.email_verified === true);
         if (userVerifiedFilter === 'unverified') list = list.filter(u => u.email_verified === false);
+        // Ordenamiento
+        const safeDate = (d: string | undefined) => d ? new Date(d).getTime() : 0;
+        list.sort((a, b) => {
+            switch (userSort) {
+                case 'name-asc':
+                    return (a.full_name || '').localeCompare(b.full_name || '');
+                case 'name-desc':
+                    return (b.full_name || '').localeCompare(a.full_name || '');
+                case 'created-oldest':
+                    return safeDate(a.created_at) - safeDate(b.created_at);
+                case 'created-newest':
+                default:
+                    return safeDate(b.created_at) - safeDate(a.created_at);
+            }
+        });
         return list;
-    }, [userData, userSearch, userVerifiedFilter]);
+    }, [userData, userSearch, userVerifiedFilter, userSort]);
     const totalUsersPages = Math.ceil(filteredUsers.length / usersPerPage) || 1;
     const paginatedUsers = React.useMemo(() => {
         const start = (usersPage - 1) * usersPerPage;
         return filteredUsers.slice(start, start + usersPerPage);
     }, [filteredUsers, usersPage]);
     // Resetear a la primera página cuando cambien filtros/búsqueda
-    useEffect(() => { setUsersPage(1); }, [userSearch, userVerifiedFilter]);
+    useEffect(() => { setUsersPage(1); }, [userSearch, userVerifiedFilter, userSort]);
 
     // Calcular KPIs cuando cambian los datos relevantes
     useEffect(() => {
@@ -1252,7 +1575,7 @@ const Admin = () => {
                                     <div className="flex flex-col sm:flex-row gap-3 mb-4">
                                         <div className="flex-1">
                                             <Input
-                                                placeholder="Buscar por nombre o email..."
+                                                placeholder="Buscar por nombre, email o teléfono..."
                                                 value={userSearch}
                                                 onChange={e => setUserSearch(e.target.value)}
                                                 className="glass border-white/20"
@@ -1266,6 +1589,17 @@ const Admin = () => {
                                                 <SelectItem value="all">Todos</SelectItem>
                                                 <SelectItem value="verified">Verificados</SelectItem>
                                                 <SelectItem value="unverified">No verificados</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Select value={userSort} onValueChange={(v: 'name-asc'|'name-desc'|'created-newest'|'created-oldest') => setUserSort(v)}>
+                                            <SelectTrigger className="w-full sm:w-56 glass border-white/20">
+                                                <SelectValue placeholder="Ordenar por" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="created-newest">Más recientes</SelectItem>
+                                                <SelectItem value="created-oldest">Más antiguos</SelectItem>
+                                                <SelectItem value="name-asc">Nombre A–Z</SelectItem>
+                                                <SelectItem value="name-desc">Nombre Z–A</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -1940,6 +2274,7 @@ const Admin = () => {
                                                     setFilterCategory("all");
                                                     setFilterPrice([0, 500000]); // Resetear al rango inicial
                                                     setFilterActive("all");
+                                                    setSelectedSizesFilter([]);
                                                     setProductsPage(1); // También resetear la página
                                                     toast({
                                                         title: "Filtros limpiados",
@@ -1972,7 +2307,7 @@ const Admin = () => {
                                                 className="text-xs sm:text-sm min-h-[44px] px-3 py-2 touch-manipulation"
                                             >
                                                 <Store className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                                                <span className="hidden sm:inline">Nuevo producto</span>
+                                                <span className="hidden sm:inline">Crear nuevo producto</span>
                                                 <span className="sm:hidden">Nuevo</span>
                                             </Button>
                                         </div>
@@ -2017,9 +2352,17 @@ const Admin = () => {
                                             onPriceRangeChange={setFilterPrice}
                                             sortBy={sortBy}
                                             onSortChange={setSortBy}
-                                            selectedSizes={[]}
-                                            onSizeChange={() => {}}
-                                            onClearFilters={null}
+                                            sizes={sizesForFilters}
+                                            selectedSizes={selectedSizesFilter}
+                                            onSizeChange={setSelectedSizesFilter}
+                                            onClearFilters={() => {
+                                                setFilterCategory("all");
+                                                setFilterPrice([0, 500000]);
+                                                setFilterActive("all");
+                                                setSelectedSizesFilter([]);
+                                                setProductsPage(1);
+                                            }}
+                                            allCategoryId={dbAllCategoryId ?? undefined}
                                         />
                                     </div>
                                     
@@ -2221,18 +2564,19 @@ const Admin = () => {
                                     </div>
                                     {/* Modal crear producto */}
                                     <Dialog open={showCreateProductModal} onOpenChange={setShowCreateProductModal}>
-                                        <DialogContent>
+                                        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl w-[95vw]">
                                             <DialogHeader>
                                                 <DialogTitle>Nuevo Producto</DialogTitle>
                                                 <DialogDescription>Completa todos los campos para crear un producto.</DialogDescription>
                                             </DialogHeader>
                                             <form onSubmit={handleCreateProduct} className="space-y-4">
-                                                <div>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div className="col-span-1">
                                                     <Label htmlFor="product-name">Nombre</Label>
                                                     <Input id="product-name" type="text" value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} required />
                                                     {nameError && <span className="text-destructive text-xs mt-1 block">{nameError}</span>}
-                                                </div>
-                                                <div>
+                                                    </div>
+                                                    <div className="col-span-1">
                                                     <Label htmlFor="product-category">Categoría</Label>
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
@@ -2247,30 +2591,92 @@ const Admin = () => {
                                                             ))}
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
-                                                </div>
-                                                <div>
+                                                    </div>
+                                                    <div className="col-span-1">
                                                     <Label htmlFor="product-stock">Stock</Label>
                                                     <Input id="product-stock" type="number" min={1} value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: Number(e.target.value) })} required />
-                                                </div>
-                                                <div>
+                                                    </div>
+                                                    <div className="col-span-1">
                                                     <Label htmlFor="product-stock-min">Stock mínimo</Label>
                                                     <Input id="product-stock-min" type="number" min={0} value={newProduct.stock_minimo} onChange={e => setNewProduct({ ...newProduct, stock_minimo: Number(e.target.value) })} required />
-                                                </div>
-                                                <div>
+                                                    </div>
+                                                    <div className="col-span-1">
                                                     <Label htmlFor="product-price">Precio</Label>
                                                     <Input id="product-price" type="number" min={0.01} step={0.01} value={newProduct.price} onChange={e => setNewProduct({ ...newProduct, price: Number(e.target.value) })} required />
-                                                </div>
-                                                <div>
+                                                    </div>
+                                                    <div className="col-span-1">
                                                     <Label htmlFor="product-image">Imagen</Label>
                                                     <Input id="product-image" type="file" accept="image/*" onChange={handleImageChange} required />
                                                     {imageError && <span className="text-destructive text-xs mt-1 block">{imageError}</span>}
-                                                </div>
-                                                <div>
+                                                    </div>
+                                                    <div className="col-span-1 md:col-span-2 space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <Label>Tallas y stock por talla</Label>
+                                                        <Button type="button" variant="outline" size="sm" onClick={fetchSizes} disabled={sizesLoading} title="Refrescar tallas">
+                                                            <RefreshCw className={`h-4 w-4 mr-1 ${sizesLoading ? 'animate-spin' : ''}`} />
+                                                            {sizesLoading ? 'Cargando…' : 'Refrescar'}
+                                                        </Button>
+                                                    </div>
+                                                    {sizesError && (
+                                                        <p className="text-xs text-destructive">{sizesError}</p>
+                                                    )}
+                                                    {sizesLoading && availableSizes.length === 0 && (
+                                                        <p className="text-xs text-muted-foreground">Cargando tallas…</p>
+                                                    )}
+                                                    {availableSizes.length > 0 ? (
+                                                        <>
+                                                            <div className="max-h-60 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                                                {availableSizes.map(size => {
+                                                                    const inputId = `stock-size-${size.id_talla}`;
+                                                                    return (
+                                                                        <div key={size.id_talla} className="grid grid-cols-[3rem,1fr] items-center gap-2">
+                                                                            <Label htmlFor={inputId} className="w-12 text-right text-xs sm:text-sm font-medium">{size.nombre_talla}</Label>
+                                                                            <Input
+                                                                                id={inputId}
+                                                                                type="number"
+                                                                                min={0}
+                                                                                placeholder={`Stock ${size.nombre_talla}`}
+                                                                                aria-label={`Stock talla ${size.nombre_talla}`}
+                                                                                value={variantStocks[size.id_talla] ?? 0}
+                                                                                onChange={(e) => {
+                                                                                    const val = Math.max(0, Number(e.target.value || 0));
+                                                                                    setVariantStocks(prev => ({ ...prev, [size.id_talla]: val }));
+                                                                                }}
+                                                                            />
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                            {(() => {
+                                                                const sum = availableSizes.reduce((acc, s) => acc + (variantStocks[s.id_talla] || 0), 0);
+                                                                const exceeds = sum > (newProduct.stock || 0);
+                                                                return (
+                                                                    <p className={`text-xs ${exceeds ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                                                        Suma por tallas: {sum} / Total: {newProduct.stock}
+                                                                        {exceeds && ' — La suma no puede exceder el total.'}
+                                                                    </p>
+                                                                );
+                                                            })()}
+                                                        </>
+                                                    ) : (
+                                                        !sizesLoading && (
+                                                            <p className="text-xs text-muted-foreground">No hay tallas configuradas en la base de datos.</p>
+                                                        )
+                                                    )}
+                                                    </div>
+                                                    <div className="col-span-1 md:col-span-2">
                                                     <Label htmlFor="product-description">Descripción</Label>
                                                     <Input id="product-description" type="text" value={newProduct.description} onChange={e => setNewProduct({ ...newProduct, description: e.target.value })} required />
+                                                    </div>
                                                 </div>
                                                 <DialogFooter className="flex gap-2 justify-end">
-                                                    <Button type="submit" size="sm" variant="default" onClick={handleCreateProduct}>Confirmar</Button>
+                                                    {(() => {
+                                                        const sum = availableSizes.reduce((acc, s) => acc + (variantStocks[s.id_talla] || 0), 0);
+                                                        const disable = sum > (newProduct.stock || 0);
+                                                        return (
+                                                            <Button type="submit" size="sm" variant="default" disabled={disable}>Confirmar</Button>
+                                                        );
+                                                    })()}
                                                     <DialogClose asChild>
                                                         <Button type="button" size="sm" variant="outline" onClick={() => setShowCreateProductModal(false)}>Cancelar</Button>
                                                     </DialogClose>
@@ -2280,19 +2686,20 @@ const Admin = () => {
                                     </Dialog>
                                     {/* Modal editar producto */}
                                     <Dialog open={!!editProduct} onOpenChange={open => !open && setEditProduct(null)}>
-                                        <DialogContent>
+                                        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl w-[95vw]">
                                             <DialogHeader>
                                                 <DialogTitle>Editar Producto</DialogTitle>
                                                 <DialogDescription>Modifica los datos del producto. La imagen es opcional.</DialogDescription>
                                             </DialogHeader>
                                             {editProduct && (
                                                 <form onSubmit={handleUpdateProduct} className="space-y-4">
-                                                    <div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div className="col-span-1">
                                                         <Label htmlFor="edit-product-name">Nombre</Label>
                                                         <Input id="edit-product-name" type="text" value={editProduct.name} onChange={e => setEditProduct({ ...editProduct, name: e.target.value })} required />
                                                         {editNameError && <span className="text-destructive text-xs mt-1 block">{editNameError}</span>}
-                                                    </div>
-                                                    <div>
+                                                        </div>
+                                                        <div className="col-span-1">
                                                         <Label htmlFor="edit-product-category">Categoría</Label>
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
@@ -2307,33 +2714,92 @@ const Admin = () => {
                                                                 ))}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
-                                                    </div>
-                                                    <div>
+                                                        </div>
+                                                        <div className="col-span-1">
                                                         <Label htmlFor="edit-product-stock">Stock</Label>
                                                         <Input id="edit-product-stock" type="number" min={1} value={editProduct.stock} onChange={e => setEditProduct({ ...editProduct, stock: Number(e.target.value) })} required />
-                                                    </div>
-                                                    <div>
+                                                        </div>
+                                                        <div className="col-span-1">
                                                         <Label htmlFor="edit-product-stock-min">Stock mínimo</Label>
                                                         <Input id="edit-product-stock-min" type="number" min={0} value={editProduct.stock_minimo} onChange={e => setEditProduct({ ...editProduct, stock_minimo: Number(e.target.value) })} required />
-                                                    </div>
-                                                    <div>
+                                                        </div>
+                                                        <div className="col-span-1">
                                                         <Label htmlFor="edit-product-price">Precio</Label>
                                                         <Input id="edit-product-price" type="number" min={0.01} step={0.01} value={editProduct.price} onChange={e => setEditProduct({ ...editProduct, price: Number(e.target.value) })} required />
-                                                    </div>
-                                                    <div>
+                                                        </div>
+                                                        <div className="col-span-1">
                                                         <Label htmlFor="edit-product-image">Imagen (opcional)</Label>
                                                         <Input id="edit-product-image" type="file" accept="image/*" onChange={handleEditImageChange} />
                                                         {editImageError && <span className="text-destructive text-xs mt-1 block">{editImageError}</span>}
                                                         {editProduct.image_url && (
                                                             <img src={editProduct.image_url} alt={editProduct.name} className="h-12 w-12 object-cover rounded mt-2" />
                                                         )}
-                                                    </div>
-                                                    <div>
-                                                        <Label htmlFor="edit-product-description">Descripción</Label>
-                                                        <Input id="edit-product-description" type="text" value={editProduct.description} onChange={e => setEditProduct({ ...editProduct, description: e.target.value })} required />
+                                                        </div>
+                                                        <div className="col-span-1 md:col-span-2 space-y-2">
+                                                            <div className="flex items-center justify-between">
+                                                                <Label>Tallas y stock por talla</Label>
+                                                                <Button type="button" variant="outline" size="sm" onClick={fetchSizes} disabled={sizesLoading} title="Refrescar tallas">
+                                                                    <RefreshCw className={`h-4 w-4 mr-1 ${sizesLoading ? 'animate-spin' : ''}`} />
+                                                                    {sizesLoading ? 'Cargando…' : 'Refrescar'}
+                                                                </Button>
+                                                            </div>
+                                                            {sizesError && (
+                                                                <p className="text-xs text-destructive">{sizesError}</p>
+                                                            )}
+                                                            {availableSizes.length > 0 ? (
+                                                                <>
+                                                                    <div className="max-h-60 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                                                                        {availableSizes.map(size => {
+                                                                            const inputId = `edit-stock-size-${size.id_talla}`;
+                                                                            return (
+                                                                                <div key={size.id_talla} className="grid grid-cols-[3rem,1fr] items-center gap-2">
+                                                                                    <Label htmlFor={inputId} className="w-12 text-right text-xs sm:text-sm font-medium">{size.nombre_talla}</Label>
+                                                                                    <Input
+                                                                                        id={inputId}
+                                                                                        type="number"
+                                                                                        min={0}
+                                                                                        placeholder={`Stock ${size.nombre_talla}`}
+                                                                                        aria-label={`Stock talla ${size.nombre_talla}`}
+                                                                                        value={editVariantStocks[size.id_talla] ?? 0}
+                                                                                        onChange={(e) => {
+                                                                                            const val = Math.max(0, Number(e.target.value || 0));
+                                                                                            setEditVariantStocks(prev => ({ ...prev, [size.id_talla]: val }));
+                                                                                        }}
+                                                                                    />
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                    {(() => {
+                                                                        const sum = availableSizes.reduce((acc, s) => acc + (editVariantStocks[s.id_talla] || 0), 0);
+                                                                        const exceeds = sum > (editProduct.stock || 0);
+                                                                        return (
+                                                                            <p className={`text-xs ${exceeds ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                                                                Suma por tallas: {sum} / Total: {editProduct.stock}
+                                                                                {exceeds && ' — La suma no puede exceder el total.'}
+                                                                            </p>
+                                                                        );
+                                                                    })()}
+                                                                </>
+                                                            ) : (
+                                                                !sizesLoading && (
+                                                                    <p className="text-xs text-muted-foreground">No hay tallas configuradas en la base de datos.</p>
+                                                                )
+                                                            )}
+                                                        </div>
+                                                        <div className="col-span-1 md:col-span-2">
+                                                            <Label htmlFor="edit-product-description">Descripción</Label>
+                                                            <Input id="edit-product-description" type="text" value={editProduct.description} onChange={e => setEditProduct({ ...editProduct, description: e.target.value })} />
+                                                        </div>
                                                     </div>
                                                     <DialogFooter className="flex gap-2 justify-end">
-                                                        <Button type="submit" size="sm" variant="default">Guardar cambios</Button>
+                                                        {(() => {
+                                                            const sum = availableSizes.reduce((acc, s) => acc + (editVariantStocks[s.id_talla] || 0), 0);
+                                                            const disable = sum > (editProduct.stock || 0);
+                                                            return (
+                                                                <Button type="submit" size="sm" variant="default" disabled={disable}>Guardar cambios</Button>
+                                                            );
+                                                        })()}
                                                         <DialogClose asChild>
                                                             <Button type="button" size="sm" variant="outline" onClick={() => setEditProduct(null)}>Cancelar</Button>
                                                         </DialogClose>
@@ -2437,7 +2903,11 @@ const Admin = () => {
                                                     <ResponsiveContainer width="100%" height={150}>
                                                         <ReBarChart data={
                                                             categories
-                                                                .filter(cat => typeof cat !== 'string' && cat.id !== 'Todas')
+                                                                .filter(cat => {
+                                                                    const name = (cat.name || '').trim().toLowerCase();
+                                                                    const id = (cat.id || '').trim().toLowerCase();
+                                                                    return name !== 'todos' && name !== 'todas' && name !== 'all' && id !== 'todos' && id !== 'todas' && id !== 'all';
+                                                                })
                                                                 .map(cat => ({
                                                                     name: cat.name,
                                                                     value: products.filter(p => p.category === cat.id).length
@@ -2615,51 +3085,48 @@ const Admin = () => {
                                     </div>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-                                        {categories.map((category, idx) => {
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {categories.map((category) => {
                                             const productCount = products.filter(p => p.category === category.id).length;
-                                            const displayName = category.name;
                                             return (
-                                                <div key={category.id} className="p-3 sm:p-4 bg-card/30 rounded-xl border border-white/10">
-                                                    <div className="flex justify-between items-start gap-2">
-                                                        <div className="flex-1 min-w-0">
-                                                            <h4 className="font-semibold text-sm sm:text-base truncate">{displayName}</h4>
-                                                            <p className="text-xs sm:text-sm text-muted-foreground">
-                                                                {productCount} producto{productCount !== 1 ? 's' : ''}
-                                                            </p>
-                                                        </div>
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild>
-                                                                <Button 
-                                                                    size="sm" 
-                                                                    variant="ghost" 
-                                                                    className="h-8 w-8 sm:h-10 sm:w-10 min-h-[44px] min-w-[44px] p-0 touch-manipulation"
-                                                                >
-                                                                    <ChevronDown className="h-4 w-4" />
-                                                                </Button>
-                                                            </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end">
-                                                                <DropdownMenuItem 
-                                                                    onClick={() => {
-                                                                        setEditingCategory(category.id);
-                                                                        setEditCategoryName(category.name);
-                                                                        setShowEditCategoryModal(true);
-                                                                    }}
-                                                                    className="text-xs sm:text-sm"
-                                                                >
-                                                                    Editar
-                                                                </DropdownMenuItem>
-                                                                <DropdownMenuSeparator />
-                                                                <DropdownMenuItem 
-                                                                    onClick={() => setConfirmDeleteCategory(category.id)}
-                                                                    className="text-red-600 text-xs sm:text-sm"
-                                                                    disabled={productCount > 0}
-                                                                >
-                                                                    {productCount > 0 ? 'Tiene productos' : 'Eliminar'}
-                                                                </DropdownMenuItem>
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
+                                                <div key={category.id} className="p-4 rounded-lg border border-white/10 bg-card flex items-center justify-between gap-3">
+                                                    <div className="flex-1 min-w-0">
+                                                        <h4 className="font-semibold text-sm sm:text-base truncate">{category.name}</h4>
+                                                        <p className="text-xs sm:text-sm text-muted-foreground">
+                                                            {productCount} producto{productCount !== 1 ? 's' : ''}
+                                                        </p>
                                                     </div>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button 
+                                                                size="sm" 
+                                                                variant="outline" 
+                                                                className="h-8 w-8 sm:h-10 sm:w-10 min-h-[40px] min-w-[40px] p-0"
+                                                            >
+                                                                <ChevronDown className="h-4 w-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuItem 
+                                                                onClick={() => {
+                                                                    setEditingCategory(category.id);
+                                                                    setEditCategoryName(category.name);
+                                                                    setShowEditCategoryModal(true);
+                                                                }}
+                                                                className="text-xs sm:text-sm"
+                                                            >
+                                                                Editar
+                                                            </DropdownMenuItem>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem 
+                                                                onClick={() => setConfirmDeleteCategory(category.id)}
+                                                                className="text-red-600 text-xs sm:text-sm"
+                                                                disabled={productCount > 0}
+                                                            >
+                                                                {productCount > 0 ? 'Tiene productos' : 'Eliminar'}
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </div>
                                             );
                                         })}
@@ -2730,7 +3197,14 @@ const Admin = () => {
                                             <DialogHeader>
                                                 <DialogTitle>¿Eliminar categoría?</DialogTitle>
                                                 <DialogDescription>
-                                                    Esta acción no se puede deshacer. La categoría "{confirmDeleteCategory}" será eliminada permanentemente.
+                                                    {(() => {
+                                                        const name = categories.find(c => c.id === confirmDeleteCategory)?.name;
+                                                        return (
+                                                            <>
+                                                                Esta acción no se puede deshacer. La categoría "{name || confirmDeleteCategory}" será eliminada permanentemente.
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </DialogDescription>
                                             </DialogHeader>
                                             <DialogFooter>

@@ -36,6 +36,11 @@ interface Product {
   variants: ProductVariant[];
 }
 
+interface CategoryOption {
+  id: string;
+  name: string;
+}
+
 export interface CartItem {
   id: number;
   name: string;
@@ -57,6 +62,7 @@ const Products = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [maxPrice, setMaxPrice] = useState(300000); // Estado para el precio máximo dinámico
+  const [categories, setCategories] = useState<CategoryOption[]>([]);
 
   // Update the useEffect to fetch only products first
   useEffect(() => {
@@ -69,6 +75,8 @@ const Products = () => {
           .from('categories')
           .select('id, name');
         if (categoriesError) throw categoriesError;
+        // Guardar categorías para filtros (sin inyectar opción sintética "Todas")
+  setCategories((categoriesData || []).map(c => ({ id: c.id as string, name: c.name as string })));
 
         // 2. Traer todos los productos
         const { data: productsData, error: productsError } = await supabase
@@ -158,17 +166,31 @@ const Products = () => {
     };
   }, [toast, priceRange]);
 
-  const categoriesList = Array.from(
-    products.reduce((acc, p) => {
-      if (p.id_category && p.category_name) acc.set(p.id_category, p.category_name);
-      return acc;
-    }, new Map<string, string>())
-  ).map(([id, name]) => ({ id, name }));
-  const categories = [{ id: 'all', name: 'Todas' }, ...categoriesList];
+  // Detectar si existe en la BD una categoría que represente "Todos/Todas/All"
+  const normalized = (s: string) => s.trim().toLowerCase();
+  const dbAllCategoryId = categories.find(
+    c => ["todos", "todas", "all"].includes(normalized(c.name))
+  )?.id;
+  // Si el usuario selecciona esa categoría, tratarla como "all"
+  const effectiveCategory = selectedCategory === dbAllCategoryId ? "all" : selectedCategory;
+
+  // Si aún no se ha cambiado manualmente, forzar por defecto la categoría "Todas" de la DB cuando exista
+  // Esto asegura que el filtro muestre esa opción seleccionada inicialmente.
+  useEffect(() => {
+    if (dbAllCategoryId && selectedCategory === "all") {
+      setSelectedCategory(dbAllCategoryId);
+    }
+  }, [dbAllCategoryId, selectedCategory]);
+
+  // Construir lista para el filtro: usar categorías reales y ocultar duplicados;
+  // ya no agregamos opción sintética, el default será la de la DB cuando exista.
+  const categoriesForFilters: CategoryOption[] = [
+    ...categories
+  ];
 
   // Permitir mostrar productos aunque no tengan variantes
   const filteredProducts = products.filter(product => {
-    const categoryMatch = selectedCategory === "all" || product.id_category === selectedCategory;
+    const categoryMatch = effectiveCategory === "all" || product.id_category === effectiveCategory;
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
     let sizeMatch = true;
     if (selectedSizes.length > 0) {
@@ -290,7 +312,7 @@ const Products = () => {
             <div className="lg:col-span-1">
               <div className="sticky top-24">
                 <ProductFilters
-                  categories={categories}
+                  categories={categoriesForFilters}
                   selectedCategory={selectedCategory}
                   onCategoryChange={setSelectedCategory}
                   priceRange={priceRange}
@@ -301,6 +323,7 @@ const Products = () => {
                   onSizeChange={setSelectedSizes}
                   onClearFilters={handleClearFilters}
                   maxPrice={maxPrice} // Pasar el precio máximo dinámico
+                  allCategoryId={dbAllCategoryId}
                 />
               </div>
             </div>

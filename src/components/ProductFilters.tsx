@@ -21,6 +21,10 @@ interface ProductFiltersProps {
   onSizeChange: (sizes: string[]) => void;
   onClearFilters?: () => void;
   maxPrice?: number;
+  // Optional: id of the category that represents "All/Todas" in DB
+  allCategoryId?: string;
+  // Optional: size labels to render (from DB)
+  sizes?: string[];
 }
 
 const ProductFilters = ({
@@ -35,10 +39,12 @@ const ProductFilters = ({
   onSizeChange,
   onClearFilters,
   maxPrice = 300000, // Nuevo prop con valor por defecto
+  allCategoryId,
+  sizes: sizesProp,
 }: ProductFiltersProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  
-  const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
+  // Prefer DB-provided sizes; fallback to common list
+  const sizes = sizesProp && sizesProp.length > 0 ? sizesProp : [ "S", "M", "L", "XL" ];
 
   const handleSizeToggle = (size: string) => {
     const newSizes = selectedSizes.includes(size)
@@ -47,7 +53,8 @@ const ProductFilters = ({
     onSizeChange(newSizes);
   };
 
-  const hasActiveFilters = selectedCategory !== "all" || 
+  const defaultAllId = allCategoryId ?? "all";
+  const hasActiveFilters = selectedCategory !== defaultAllId || 
                           priceRange[0] > 0 || 
                           priceRange[1] < maxPrice || 
                           selectedSizes.length > 0;
