@@ -6,6 +6,8 @@ import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
 import { ArrowLeft, Plus, Minus } from "lucide-react";
 import { supabase } from '@/lib/supabase';
+import { addFavorite, removeFavorite, getFavoritesFromEdgeRaw } from "@/lib/api/favorites";
+import { Heart } from "lucide-react";
 
 interface Size {
   id_talla: number;
@@ -53,6 +55,8 @@ const ProductDetail = () => {
   const [loading, setLoading] = useState(true);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -137,6 +141,18 @@ const ProductDetail = () => {
       fetchProduct();
     }
   }, [id, navigate, toast]);
+
+  const refreshFavorite = async () => {
+    if (!product) return;
+    const favorites = await getFavoritesFromEdgeRaw();
+    setIsFavorite(favorites.some((fav: any) => fav.product_id === product.id));
+  };
+
+  useEffect(() => {
+    if (product) {
+      refreshFavorite();
+    }
+  }, [product]);
 
   // Calculate total items for cart badge
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
@@ -384,6 +400,39 @@ const ProductDetail = () => {
     });
   };
 
+  const handleFavoriteClick = async () => {
+    if (!product) return;
+    setFavoriteLoading(true);
+    try {
+      if (!isFavorite) {
+        const ok = await addFavorite(product.id);
+        if (ok) {
+          setIsFavorite(true);
+          toast({
+            title: "Agregado a favoritos",
+            description: `El producto "${product.name}" se agregó a tus favoritos.`,
+          });
+        }
+      } else {
+        const ok = await removeFavorite(product.id);
+        if (ok) {
+          setIsFavorite(false);
+          toast({
+            title: "Eliminado de favoritos",
+            description: `El producto "${product.name}" fue removido de favoritos.`,
+          });
+        }
+      }
+    } catch {
+      toast({
+        title: "Error",
+        description: "No se pudo modificar favoritos",
+        variant: "destructive",
+      });
+    }
+    setFavoriteLoading(false);
+  };
+
   const availableSizes = getAvailableSizes();
   const hasStock = availableSizes.length > 0;
   const maxStock = getMaxStock();
@@ -467,11 +516,23 @@ const ProductDetail = () => {
 
               {/* Product Info */}
               <div className="space-y-4 sm:space-y-6">
+                <div className="space-y-2 flex items-center gap-2">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-white">{product.name}</h1>
+                  <button
+                    type="button"
+                    disabled={favoriteLoading}
+                    onClick={handleFavoriteClick}
+                    className={`rounded-full p-2 transition-colors ${isFavorite ? "bg-red-500 text-white" : "bg-white/80 text-red-500 hover:bg-red-500 hover:text-white"}`}
+                    aria-label={isFavorite ? "Quitar de favoritos" : "Agregar a favoritos"}
+                  >
+                    <Heart className={`h-6 w-6 ${isFavorite ? "fill-current" : ""}`} />
+                  </button>
+                </div>
+
                 <div className="space-y-2">
                   <p className="text-xs sm:text-sm uppercase tracking-wider text-white/70">
                     {product.category}
                   </p>
-                  <h1 className="text-2xl sm:text-3xl font-bold text-white">{product.name}</h1>
                   <p className="text-xl sm:text-2xl font-bold text-primary">
                     ${product.price.toLocaleString()}
                   </p>

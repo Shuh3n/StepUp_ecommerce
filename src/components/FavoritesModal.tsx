@@ -46,7 +46,7 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
       }
 
       const response = await fetch(EDGE_URL, {
-        method: "POST", // o "GET" si tu función lo soporta
+        method: "GET", // o "GET" si tu función lo soporta
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${access_token}`,

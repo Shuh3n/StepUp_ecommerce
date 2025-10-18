@@ -20,6 +20,7 @@ import { supabase } from "@/lib/supabase";
 //   if (data && Array.isArray(data.favorites)) return data.favorites;
 //   return [];
 // }
+const EDGE_URL = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-favorites";
 
 
 export async function getFavoritesFromEdgeRaw() {
@@ -29,7 +30,7 @@ export async function getFavoritesFromEdgeRaw() {
     console.error("No autenticado");
     return [];
   }
-  const response = await fetch("https://<TU-PROYECTO>.supabase.co/functions/v1/get-favorites", {
+  const response = await fetch(EDGE_URL, {
     method: "POST", // o "GET" si tu función Edge acepta GET
     headers: {
       "Content-Type": "application/json",

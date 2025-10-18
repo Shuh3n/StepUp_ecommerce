@@ -4,7 +4,7 @@ import ProductCard from "@/components/ProductCard";
 import ProductFilters from "@/components/ProductFilters";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
-//import { getFavoritesFromEdge } from "@/lib/api/favorites";
+import { getFavoritesFromEdgeRaw } from "@/lib/api/favorites"; // Asegúrate de importar tu función
 import { supabase } from "@/lib/supabase";
 import { useNavigate } from 'react-router-dom';
 
@@ -55,20 +55,23 @@ const Products = () => {
   const { toast } = useToast();
   const [favoritesMap, setFavoritesMap] = useState<Record<number, boolean>>({});
 
-  // refresca favoritos después de agregar/quitar
-  // const refreshFavorites = async () => {
-  //   const favorites = await getFavoritesFromEdge();
-  //   const map: Record<number, boolean> = {};
-  //   favorites.forEach((fav: any) => {
-  //     map[fav.product_id] = true;
-  //   });
-  //   setFavoritesMap(map);
-  // };
+  const refreshFavorites = async () => {
+    try {
+      const favorites = await getFavoritesFromEdgeRaw();
+      const map: Record<number, boolean> = {};
+      favorites.forEach((fav: any) => {
+        map[fav.product_id] = true;
+      });
+      setFavoritesMap(map);
+    } catch (err) {
+      // Manejo de error opcional
+    }
+  };
 
-  // // carga favoritos al montar
-  // useEffect(() => {
-  //   refreshFavorites();
-  // }, []);
+  // carga favoritos al montar
+  useEffect(() => {
+    refreshFavorites();
+  }, []);
 
   // First, define categories
   const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
@@ -274,7 +277,7 @@ const Products = () => {
                         onAddToCart={() => handleAddToCart(product)}
                         onClick={() => handleProductClick(product)}
                         isFavorite={!!favoritesMap[product.id]}
-                        // onFavoriteChange={() => refreshFavorites()}
+                        onFavoriteChange={refreshFavorites}
                       />
                     </div>
                   ))}
