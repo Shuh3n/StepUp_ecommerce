@@ -270,6 +270,7 @@ const Products = () => {
                         {...product}
                         image={product.image_url}
                         onAddToCart={() => handleAddToCart(product)}
+                        onAddToCart={() => handleAddToCart(product)}
                         onClick={() => handleProductClick(product)}
                         isFavorite={!!favoritesMap[product.id]}
                         // onFavoriteChange={() => refreshFavorites()}

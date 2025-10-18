@@ -56,7 +56,7 @@ const ProductCard = ({
   }, [isFavorite]);
 
   const hasVariants = variants.length > 0;
-  const hasStock = hasVariants ? variants.some((v) => v.stock > 0) : true;
+  const hasStock = hasVariants ? variants.some((v) => Number(v.stock) > 0) : false;
 
   const isNew = () => {
     if (!created_at) return false;
@@ -68,7 +68,7 @@ const ProductCard = ({
 
   const getButtonProps = () => {
     if (!hasVariants) {
-      return { text: "Ver Detalles", disabled: false, variant: "outline" as const };
+      return { text: "Sin Variantes", disabled: true, variant: "outline" as const };
     }
     if (hasStock) {
       return { text: "Agregar", disabled: false, variant: "default" as const };
@@ -147,7 +147,7 @@ const ProductCard = ({
       className="glass rounded-xl overflow-hidden border border-white/20 hover:border-white/40 transition-all duration-300 cursor-pointer group h-full flex flex-col"
       onClick={onClick}
     >
-      {/* Imagen con altura fija */}
+      {/* Imagen sin badges */}
       <div className="relative aspect-square overflow-hidden">
         <img
           src={image || "/placeholder.png"}
@@ -190,7 +190,12 @@ const ProductCard = ({
               </Badge>
             ) : (
               <Badge variant="destructive" className="bg-red-500/80 text-white text-xs">
-                Agotado
+                🚫 Agotado
+              </Badge>
+            )}
+            {!hasVariants && (
+              <Badge variant="secondary" className="bg-gray-500/80 text-white text-xs">
+                Sin Configurar
               </Badge>
             )}
           </div>
@@ -213,9 +218,13 @@ const ProductCard = ({
           <p className="text-2xl font-bold gradient-text mb-1">
             ${price.toLocaleString()}
           </p>
-          {hasVariants && (
+          {hasVariants ? (
             <p className="text-xs text-muted-foreground">
-              {variants.filter((v) => v.stock > 0).length} de {variants.length} tallas disponibles
+              {variants.filter(v => Number(v.stock) > 0).length} de {variants.length} tallas disponibles
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Producto sin variantes configuradas
             </p>
           )}
         </div>
