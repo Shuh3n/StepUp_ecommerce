@@ -22,6 +22,7 @@ interface ProductVariant {
   size?: Size;
 }
 interface Product {
+  [x: string]: any;
   id: number;
   name: string;
   description?: string;
@@ -268,8 +269,8 @@ const Products = () => {
                     >
                       <ProductCard
                         {...product}
+                        category={product.categories?.name || "Sin categoría"}
                         image={product.image_url}
-                        onAddToCart={() => handleAddToCart(product)}
                         onAddToCart={() => handleAddToCart(product)}
                         onClick={() => handleProductClick(product)}
                         isFavorite={!!favoritesMap[product.id]}
