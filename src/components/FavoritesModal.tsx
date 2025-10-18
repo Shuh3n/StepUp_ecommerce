@@ -3,6 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Trash2, ShoppingBag, Star } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { removeFavorite } from "@/lib/api/favorites";
+import { supabase } from "@/lib/supabase";
 
 interface FavoritesModalProps {
   isOpen: boolean;
@@ -21,21 +24,89 @@ interface FavoriteProduct {
   isNew?: boolean;
 }
 
-const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) => {
-  const [favorites, setFavorites] = useState<FavoriteProduct[]>([]);
+// Cambia esto por tu URL real
+const EDGE_URL = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-favorites";
 
-  // Load favorites from localStorage
-  useEffect(() => {
-    const savedFavorites = localStorage.getItem('stepup-favorites');
-    if (savedFavorites) {
-      setFavorites(JSON.parse(savedFavorites));
+const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) => {
+  const { toast } = useToast();
+  const [favorites, setFavorites] = useState<FavoriteProduct[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Llamada directa por fetch
+  const fetchFavorites = async () => {
+    setLoading(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const access_token = data?.session?.access_token;
+      if (!access_token) {
+        toast({ title: "Error", description: "Debes iniciar sesión para ver tus favoritos." });
+        setFavorites([]);
+        setLoading(false);
+        return;
+      }
+
+      const response = await fetch(EDGE_URL, {
+        method: "POST", // o "GET" si tu función lo soporta
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+      });
+      const result = await response.json();
+      console.log("Respuesta cruda fetch:", result);
+
+      // Soporte para distintos formatos de respuesta
+      const favoritesArray = Array.isArray(result.favorites) ? result.favorites : Array.isArray(result) ? result : [];
+
+      const prods = (favoritesArray || [])
+        .filter((fav) => fav.products)
+        .map((fav) => ({
+          id: fav.product_id,
+          name: fav.products?.name,
+          price: Number(fav.products?.price),
+          originalPrice: undefined,
+          image: fav.products?.image_url,
+          category: fav.products?.category || "General",
+          rating: 5,
+          isNew: false,
+        }));
+
+      setFavorites(prods);
+      if (prods.length === 0) {
+        toast({ title: "Sin favoritos", description: "No se encontraron favoritos para este usuario." });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Error al cargar favoritos." });
+      console.error("Error en fetchFavorites:", err);
+      setFavorites([]);
     }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (isOpen) fetchFavorites();
   }, [isOpen]);
 
-  const removeFavorite = (productId: number) => {
-    const updatedFavorites = favorites.filter(fav => fav.id !== productId);
-    setFavorites(updatedFavorites);
-    localStorage.setItem('stepup-favorites', JSON.stringify(updatedFavorites));
+  const handleRemoveFavorite = async (productId: number) => {
+    setLoading(true);
+    try {
+      const ok = await removeFavorite(productId);
+      if (ok) {
+        toast({
+          title: "Eliminado de favoritos",
+          description: "El producto ha sido removido de tus favoritos.",
+        });
+        await fetchFavorites();
+      } else {
+        toast({
+          title: "Error",
+          description: "No se pudo eliminar de favoritos.",
+        });
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo eliminar de favoritos." });
+    }
+    setLoading(false);
   };
 
   const handleAddToCart = (product: FavoriteProduct) => {
@@ -53,7 +124,10 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto animate-scale-in">
+      <DialogContent aria-describedby="favorites-description" className="max-w-4xl max-h-[80vh] overflow-y-auto animate-scale-in">
+        <span id="favorites-description" className="sr-only">
+          Listado de tus productos favoritos
+        </span>
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold gradient-text flex items-center gap-2 animate-fade-in">
             <Heart className="h-6 w-6 text-red-500 fill-current" />
@@ -61,7 +135,9 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
           </DialogTitle>
         </DialogHeader>
         
-        {favorites.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-12">Cargando favoritos...</div>
+        ) : favorites.length === 0 ? (
           <div className="text-center py-12">
             <Heart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-xl font-semibold mb-2">No tienes favoritos aún</h3>
@@ -115,7 +191,7 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
                       variant="ghost"
                       size="icon"
                       className="absolute top-3 right-3 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white"
-                      onClick={() => removeFavorite(product.id)}
+                      onClick={() => handleRemoveFavorite(product.id)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>

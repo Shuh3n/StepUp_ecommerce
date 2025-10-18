@@ -1,5 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Heart, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { addFavorite, removeFavorite } from "@/lib/api/favorites";
 
 interface ProductVariant {
   id_variante: number;
@@ -25,6 +29,8 @@ interface ProductCardProps {
   variants?: ProductVariant[];
   onAddToCart: () => void;
   onClick: () => void;
+  isFavorite: boolean;
+  onFavoriteChange?: (productId: number, newValue: boolean) => void;
 }
 
 const ProductCard = ({
@@ -37,15 +43,21 @@ const ProductCard = ({
   created_at,
   variants = [],
   onAddToCart,
-  onClick
+  onClick,
+  isFavorite,
+  onFavoriteChange,
 }: ProductCardProps) => {
-  // Determinar el estado del stock
-  const hasVariants = variants && variants.length > 0;
-  const hasStock = hasVariants 
-    ? variants.some(v => v.stock > 0) 
-    : true;
+  const { toast } = useToast();
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [localIsFavorite, setLocalIsFavorite] = useState(isFavorite);
 
-  // Determinar si es un producto nuevo (menos de 5 días)
+  useEffect(() => {
+    setLocalIsFavorite(isFavorite);
+  }, [isFavorite]);
+
+  const hasVariants = variants.length > 0;
+  const hasStock = hasVariants ? variants.some((v) => v.stock > 0) : true;
+
   const isNew = () => {
     if (!created_at) return false;
     const createdDate = new Date(created_at);
@@ -54,31 +66,14 @@ const ProductCard = ({
     return daysDifference <= 5;
   };
 
-  console.log(`ProductCard ${name}: hasStock=${hasStock}, variants:`, variants);
-
-  // Determinar el texto y estado del botón
   const getButtonProps = () => {
     if (!hasVariants) {
-      return {
-        text: 'Ver Detalles',
-        disabled: false,
-        variant: 'outline' as const
-      };
+      return { text: "Ver Detalles", disabled: false, variant: "outline" as const };
     }
-    
     if (hasStock) {
-      return {
-        text: 'Agregar',
-        disabled: false,
-        variant: 'default' as const
-      };
+      return { text: "Agregar", disabled: false, variant: "default" as const };
     }
-    
-    return {
-      text: 'Agotado',
-      disabled: true,
-      variant: 'outline' as const
-    };
+    return { text: "Agotado", disabled: true, variant: "outline" as const };
   };
 
   const buttonProps = getButtonProps();
@@ -92,35 +87,97 @@ const ProductCard = ({
     }
   };
 
+  const handleFavoriteClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavoriteLoading(true);
+    try {
+      let ok = false;
+      if (!localIsFavorite) {
+        ok = await addFavorite(id);
+        if (ok) {
+          setLocalIsFavorite(true);
+          toast({
+            title: "Agregado a favoritos",
+            description: (
+              <span className="flex items-center gap-2">
+                <Heart className="h-5 w-5 text-green-600 fill-current" />
+                <span>El producto "{name}" se agregó a tus favoritos.</span>
+              </span>
+            ),
+          });
+          if (onFavoriteChange) onFavoriteChange(id, true);
+        } else {
+          toast({
+            title: "Error",
+            description: "No se pudo agregar a favoritos",
+          });
+        }
+      } else {
+        ok = await removeFavorite(id);
+        if (ok) {
+          setLocalIsFavorite(false);
+          toast({
+            title: "Eliminado de favoritos",
+            description: (
+              <span className="flex items-center gap-2">
+                <Trash2 className="h-5 w-5 text-red-500 fill-current" />
+                <span>El producto "{name}" fue removido de favoritos.</span>
+              </span>
+            ),
+          });
+          if (onFavoriteChange) onFavoriteChange(id, false);
+        } else {
+          toast({
+            title: "Error",
+            description: "No se pudo eliminar de favoritos",
+          });
+        }
+      }
+    } catch {
+      toast({
+        title: "Error",
+        description: "Error al modificar favoritos",
+      });
+    }
+    setFavoriteLoading(false);
+  };
+
   return (
-    <div 
+    <div
       className="glass rounded-xl overflow-hidden border border-white/20 hover:border-white/40 transition-all duration-300 cursor-pointer group h-full flex flex-col"
       onClick={onClick}
     >
       {/* Imagen con altura fija */}
       <div className="relative aspect-square overflow-hidden">
         <img
-          src={image || '/placeholder.png'}
+          src={image || "/placeholder.png"}
           alt={name}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
         />
-        
+
+        {/* Botón de favoritos */}
+        <Button
+          type="button"
+          variant={localIsFavorite ? "default" : "ghost"}
+          size="icon"
+          disabled={favoriteLoading}
+          className={`absolute top-3 right-3 rounded-full z-10 ${localIsFavorite ? "bg-red-500 text-white" : "bg-white/80 text-red-500 hover:bg-red-500 hover:text-white"}`}
+          onClick={handleFavoriteClick}
+        >
+          <Heart className={`h-5 w-5 ${localIsFavorite ? "fill-current" : ""}`} />
+        </Button>
+
         {/* Badges en la parte superior */}
-        <div className="absolute top-3 left-3 right-3 flex justify-between items-start">
-          {/* Category Badge */}
+        <div className="absolute top-3 left-3 right-16 flex justify-between items-start pointer-events-none">
           <Badge variant="outline" className="bg-black/50 text-white border-white/20 text-xs">
             {category}
           </Badge>
-
-          {/* Status Badge */}
           <div className="flex flex-col gap-1">
             {isNew() && (
               <Badge variant="secondary" className="bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white border-0 text-xs font-medium">
                 ✨ Nuevo
               </Badge>
             )}
-            
-            {/* Stock Badge */}
             {!hasVariants ? (
               !isNew() && (
                 <Badge variant="secondary" className="bg-blue-500/80 text-white text-xs">
@@ -142,7 +199,6 @@ const ProductCard = ({
 
       {/* Contenido con altura flexible */}
       <div className="p-4 flex flex-col flex-grow">
-        {/* Información del producto */}
         <div className="flex-grow">
           <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2 min-h-[3.5rem]">
             {name}
@@ -153,20 +209,16 @@ const ProductCard = ({
             </p>
           )}
         </div>
-
-        {/* Precio y información de stock */}
         <div className="mb-4">
           <p className="text-2xl font-bold gradient-text mb-1">
             ${price.toLocaleString()}
           </p>
           {hasVariants && (
             <p className="text-xs text-muted-foreground">
-              {variants.filter(v => v.stock > 0).length} de {variants.length} tallas disponibles
+              {variants.filter((v) => v.stock > 0).length} de {variants.length} tallas disponibles
             </p>
           )}
         </div>
-
-        {/* Botón siempre en la parte inferior */}
         <Button
           onClick={handleButtonClick}
           disabled={buttonProps.disabled}
