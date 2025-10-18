@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
 import { ArrowLeft, Plus, Minus } from "lucide-react";
-import { supabase } from '@/lib/supabase';
+import { supabase } from "@/lib/supabase";
 import { addFavorite, removeFavorite, getFavoritesFromEdgeRaw } from "@/lib/api/favorites";
 import { Heart } from "lucide-react";
 
@@ -401,8 +401,29 @@ const ProductDetail = () => {
   };
 
   const handleFavoriteClick = async () => {
-    if (!product) return;
     setFavoriteLoading(true);
+
+    // Verifica si el usuario está logueado
+    const { data } = await supabase.auth.getSession();
+    const access_token = data?.session?.access_token;
+    if (!access_token) {
+      toast({
+        title: "Para agregar a favoritos debes iniciar sesión",
+        description: (
+          <Button
+            variant="outline"
+            className="mt-2 bg-orange-500 text-white hover:bg-orange-600 border-none"
+            onClick={() => window.location.href = "/login"}
+          >
+            Ir a Login
+          </Button>
+        ),
+        duration: 6000,
+      });
+      setFavoriteLoading(false);
+      return;
+    }
+
     try {
       if (!isFavorite) {
         const ok = await addFavorite(product.id);
@@ -421,6 +442,7 @@ const ProductDetail = () => {
             title: "Eliminado de favoritos",
             description: `El producto "${product.name}" fue removido de favoritos.`,
           });
+          await refreshFavorite(); // <-- Refresca el estado después de eliminar
         }
       }
     } catch {

@@ -11,6 +11,7 @@ interface FavoritesModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddToCart?: (product: any) => void;
+  onFavoritesChange?: () => void; // <-- nueva prop
 }
 
 interface FavoriteProduct {
@@ -27,7 +28,7 @@ interface FavoriteProduct {
 // Cambia esto por tu URL real
 const EDGE_URL = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-favorites";
 
-const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) => {
+const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: FavoritesModalProps) => {
   const { toast } = useToast();
   const [favorites, setFavorites] = useState<FavoriteProduct[]>([]);
   const [loading, setLoading] = useState(false);
@@ -39,7 +40,19 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
       const { data } = await supabase.auth.getSession();
       const access_token = data?.session?.access_token;
       if (!access_token) {
-        toast({ title: "Error", description: "Debes iniciar sesión para ver tus favoritos." });
+        toast({
+          title: "Debes iniciar sesión",
+          description: (
+            <Button
+              variant="outline"
+              onClick={() => window.location.href = "/login"}
+              className="mt-2"
+            >
+              Ir a Login
+            </Button>
+          ),
+          duration: 6000,
+        });
         setFavorites([]);
         setLoading(false);
         return;
@@ -92,11 +105,9 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
     try {
       const ok = await removeFavorite(productId);
       if (ok) {
-        toast({
-          title: "Eliminado de favoritos",
-          description: "El producto ha sido removido de tus favoritos.",
-        });
+        toast({ title: "Eliminado de favoritos", description: "El producto ha sido removido de tus favoritos." });
         await fetchFavorites();
+        if (onFavoritesChange) onFavoritesChange(); // <-- Esto refresca el estado en el padre
       } else {
         toast({
           title: "Error",

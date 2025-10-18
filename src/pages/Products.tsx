@@ -4,7 +4,8 @@ import ProductCard from "@/components/ProductCard";
 import ProductFilters from "@/components/ProductFilters";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
-import { getFavoritesFromEdgeRaw } from "@/lib/api/favorites"; // Asegúrate de importar tu función
+import FavoritesModal from "@/components/FavoritesModal";
+import { getFavoritesFromEdgeRaw } from "@/lib/api/favorites";
 import { supabase } from "@/lib/supabase";
 import { useNavigate } from 'react-router-dom';
 
@@ -48,6 +49,7 @@ const Products = () => {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isFavoritesOpen, setIsFavoritesOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000000]);
@@ -56,16 +58,12 @@ const Products = () => {
   const [favoritesMap, setFavoritesMap] = useState<Record<number, boolean>>({});
 
   const refreshFavorites = async () => {
-    try {
-      const favorites = await getFavoritesFromEdgeRaw();
-      const map: Record<number, boolean> = {};
-      favorites.forEach((fav: any) => {
-        map[fav.product_id] = true;
-      });
-      setFavoritesMap(map);
-    } catch (err) {
-      // Manejo de error opcional
-    }
+    const favorites = await getFavoritesFromEdgeRaw();
+    const map: Record<number, boolean> = {};
+    favorites.forEach((fav: any) => {
+      map[fav.product_id] = true;
+    });
+    setFavoritesMap(map);
   };
 
   // carga favoritos al montar
@@ -212,7 +210,7 @@ const Products = () => {
         cartItems={totalItems}
         onCartClick={() => setIsCartOpen(true)}
         onContactClick={() => {}}
-        onFavoritesClick={() => {}}
+        onFavoritesClick={() => setIsFavoritesOpen(true)}
       />
 
       <main className="pt-20 px-4 sm:px-6 lg:px-8">
@@ -271,9 +269,15 @@ const Products = () => {
                       style={{ animationDelay: `${index * 0.1}s` }}
                     >
                       <ProductCard
-                        {...product}
-                        category={product.categories?.name || "Sin categoría"}
+                        key={product.id}
+                        id={product.id}
+                        name={product.name}
+                        price={product.price}
                         image={product.image_url}
+                        category={product.categories?.name || "Sin categoría"}
+                        description={product.description}
+                        created_at={product.created_at}
+                        variants={product.variants}
                         onAddToCart={() => handleAddToCart(product)}
                         onClick={() => handleProductClick(product)}
                         isFavorite={!!favoritesMap[product.id]}
@@ -294,6 +298,12 @@ const Products = () => {
         items={cartItems}
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
+      />
+
+      <FavoritesModal
+        isOpen={isFavoritesOpen}
+        onClose={() => setIsFavoritesOpen(false)}
+        onFavoritesChange={refreshFavorites}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import { Heart, Trash2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { addFavorite, removeFavorite } from "@/lib/api/favorites";
+import { supabase } from "@/lib/supabase";
 
 interface ProductVariant {
   id_variante: number;
@@ -90,6 +91,28 @@ const ProductCard = ({
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setFavoriteLoading(true);
+
+    // Verifica si el usuario está logueado
+    const { data } = await supabase.auth.getSession();
+    const access_token = data?.session?.access_token;
+    if (!access_token) {
+      toast({
+        title: "Para agregar a favoritos debes iniciar sesión",
+        description: (
+          <Button
+            variant="outline"
+            className="mt-2 bg-orange-500 text-white hover:bg-orange-600 border-none"
+            onClick={() => window.location.href = "/login"}
+          >
+            Ir a Login
+          </Button>
+        ),
+        duration: 6000,
+      });
+      setFavoriteLoading(false);
+      return;
+    }
+
     try {
       let ok = false;
       if (!localIsFavorite) {
@@ -105,7 +128,7 @@ const ProductCard = ({
               </span>
             ),
           });
-          if (onFavoriteChange) onFavoriteChange(id, true);
+          if (onFavoriteChange) onFavoriteChange(id, true); // Al agregar
         } else {
           toast({
             title: "Error",
@@ -125,7 +148,7 @@ const ProductCard = ({
               </span>
             ),
           });
-          if (onFavoriteChange) onFavoriteChange(id, false);
+          if (onFavoriteChange) onFavoriteChange(id, false); // Al eliminar
         } else {
           toast({
             title: "Error",
