@@ -1,18 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import ProductCard from "@/components/ProductCard";
 import ProductFilters from "@/components/ProductFilters";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
-import { useEffect } from "react";
+import FavoritesModal from "@/components/FavoritesModal";
+import { getFavoritesFromEdgeRaw } from "@/lib/api/favorites";
 import { supabase } from "@/lib/supabase";
 import { useNavigate } from 'react-router-dom';
 
 interface Size {
   id_talla: number;
-  talla: string;
+  nombre_talla: string;
 }
-
 interface ProductVariant {
   id_variante: number;
   id_producto: number;
@@ -22,8 +22,8 @@ interface ProductVariant {
   precio_ajuste: number;
   size?: Size;
 }
-
 interface Product {
+  [x: string]: any;
   id: number;
   name: string;
   description?: string;
@@ -34,7 +34,6 @@ interface Product {
   updated_at?: string;
   variants: ProductVariant[];
 }
-
 export interface CartItem {
   id: number;
   name: string;
@@ -46,67 +45,92 @@ export interface CartItem {
 
 const Products = () => {
   const navigate = useNavigate();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isFavoritesOpen, setIsFavoritesOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 150000]);
-  const [sortBy, setSortBy] = useState("newest");
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000000]);
+  const [sortBy, setSortBy] = useState("newest");
   const { toast } = useToast();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [favoritesMap, setFavoritesMap] = useState<Record<number, boolean>>({});
 
-  // Update the useEffect to fetch only products first
+  const refreshFavorites = async () => {
+    const favorites = await getFavoritesFromEdgeRaw();
+    const map: Record<number, boolean> = {};
+    favorites.forEach((fav: any) => {
+      map[fav.product_id] = true;
+    });
+    setFavoritesMap(map);
+  };
+
+  // carga favoritos al montar
+  useEffect(() => {
+    refreshFavorites();
+  }, []);
+
+  // First, define categories
+  const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
+
+  // Filtrado de productos
+  const filteredProducts = products.filter(product => {
+    const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
+    const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
+    const sizeMatch = selectedSizes.length === 0 ||
+      product.variants?.some(v =>
+        v.size && selectedSizes.includes(v.size.nombre_talla?.trim() || '') && v.stock > 0
+      );
+    return categoryMatch && priceMatch && sizeMatch;
+  });
+
+  // Ordenamiento
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    switch (sortBy) {
+      case "price-low":
+        return a.price - b.price;
+      case "price-high":
+        return b.price - a.price;
+      default:
+        return b.id - a.id;
+    }
+  });
+
+  // Carga productos de supabase
   useEffect(() => {
     const fetchProducts = async () => {
       setLoadingProducts(true);
       try {
-        // Fetch products and their variants with sizes
         const { data: productsData, error: productsError } = await supabase
           .from('products')
-          .select(`
-            id,
-            name,
-            description,
-            price,
-            image_url,
-            category,
-            created_at,
-            products_variants (
-              id_variante,
-              id_producto,
-              id_talla,
-              codigo_sku,
-              stock,
-              precio_ajuste
-            )
-          `);
+          .select('*')
+          .order('id', { ascending: false });
 
         if (productsError) throw productsError;
 
-        // Fetch all sizes
-        const { data: sizesData, error: sizesError } = await supabase
+        const { data: variantsData } = await supabase
+          .from('products_variants')
+          .select('*');
+        const { data: sizesData } = await supabase
           .from('sizes')
           .select('*');
 
-        if (sizesError) throw sizesError;
-
-        // Transform the data to include sizes in variants
-        const transformedProducts = productsData?.map(product => ({
-          ...product,
-          variants: product.products_variants.map((variant: ProductVariant) => ({
-            ...variant,
-            size: sizesData.find(size => size.id_talla === variant.id_talla)
-          }))
-        })) || [];
-
+        const transformedProducts = productsData?.map(product => {
+          const productVariants = (variantsData || [])
+            .filter(variant => variant.id_producto === product.id)
+            .map(variant => {
+              const size = sizesData?.find(s => s.id_talla === variant.id_talla);
+              return { ...variant, size };
+            });
+          return { ...product, variants: productVariants };
+        }) || [];
         setProducts(transformedProducts);
       } catch (error: any) {
-        console.error('Error fetching products:', error);
-        toast({ 
-          title: 'Error al cargar productos', 
-          description: error.message, 
-          variant: 'destructive' 
+        toast({
+          title: 'Error al cargar productos',
+          description: `No se pudieron cargar los productos. ${error.message || 'Error desconocido'}`,
+          variant: 'destructive'
         });
       } finally {
         setLoadingProducts(false);
@@ -116,35 +140,9 @@ const Products = () => {
     fetchProducts();
   }, [toast]);
 
-  const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
-
-  // Update the product filtering to consider variants
-  const filteredProducts = products.filter(product => {
-    const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
-    const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
-    const sizeMatch = selectedSizes.length === 0 || 
-      product.variants?.some(v => 
-        v.size && selectedSizes.includes(v.size.talla) && v.stock > 0
-      ) || false;
-    return categoryMatch && priceMatch && sizeMatch;
-  });
-
-  const sortedProducts = [...filteredProducts].sort((a, b) => {
-    switch (sortBy) {
-      case "price-low":
-        return a.price - b.price;
-      case "price-high":
-        return b.price - a.price;
-      default:
-        return b.id - a.id; // newest first
-    }
-  });
-
   const handleAddToCart = (product: Product) => {
     setCartItems(prev => {
       const existingItem = prev.find(item => item.id === product.id);
-      
-      // Create cart item from product
       const cartItem: CartItem = {
         id: product.id,
         name: product.name,
@@ -153,7 +151,6 @@ const Products = () => {
         category: product.category,
         quantity: 1
       };
-      
       if (existingItem) {
         toast({
           title: "Producto actualizado",
@@ -179,7 +176,6 @@ const Products = () => {
       handleRemoveItem(id);
       return;
     }
-    
     setCartItems(prev =>
       prev.map(item =>
         item.id === id ? { ...item, quantity } : item
@@ -197,13 +193,12 @@ const Products = () => {
 
   const handleClearFilters = () => {
     setSelectedCategory("all");
-    setPriceRange([0, 150000]);
+    setPriceRange([0, 1000000]);
     setSelectedSizes([]);
     setSortBy("newest");
   };
 
   const handleProductClick = (product: Product) => {
-    console.log('Navigating to product:', product); // Debug log
     navigate(`/productos/${product.id}`);
   };
 
@@ -211,17 +206,15 @@ const Products = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      // En tu componente Layout o padre
-      <Navbar 
+      <Navbar
         cartItems={totalItems}
         onCartClick={() => setIsCartOpen(true)}
-        onContactClick={() => {}} // Pass empty function if not needed
-        onFavoritesClick={() => {}} // Pass empty function if not needed
+        onContactClick={() => {}}
+        onFavoritesClick={() => setIsFavoritesOpen(true)}
       />
-      
+
       <main className="pt-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
           <div className="mb-8">
             <h1 className="text-4xl font-bold mb-4">
               <span className="gradient-text">Todos los</span> Productos
@@ -231,9 +224,7 @@ const Products = () => {
             </p>
           </div>
 
-          {/* Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-            {/* Filters Sidebar */}
             <div className="lg:col-span-1">
               <div className="sticky top-24">
                 <ProductFilters
@@ -251,7 +242,6 @@ const Products = () => {
               </div>
             </div>
 
-            {/* Products Grid */}
             <div className="lg:col-span-3">
               {loadingProducts ? (
                 <div className="text-center py-16">
@@ -279,10 +269,19 @@ const Products = () => {
                       style={{ animationDelay: `${index * 0.1}s` }}
                     >
                       <ProductCard
-                        {...product}
+                        key={product.id}
+                        id={product.id}
+                        name={product.name}
+                        price={product.price}
                         image={product.image_url}
-                        onAddToCart={() => handleAddToCart(product)} // Changed this line
+                        category={product.categories?.name || "Sin categoría"}
+                        description={product.description}
+                        created_at={product.created_at}
+                        variants={product.variants}
+                        onAddToCart={() => handleAddToCart(product)}
                         onClick={() => handleProductClick(product)}
+                        isFavorite={!!favoritesMap[product.id]}
+                        onFavoriteChange={refreshFavorites}
                       />
                     </div>
                   ))}
@@ -300,9 +299,14 @@ const Products = () => {
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
       />
+
+      <FavoritesModal
+        isOpen={isFavoritesOpen}
+        onClose={() => setIsFavoritesOpen(false)}
+        onFavoritesChange={refreshFavorites}
+      />
     </div>
   );
 };
 
 export default Products;
-
