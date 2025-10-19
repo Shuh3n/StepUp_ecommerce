@@ -32,11 +32,12 @@ const ForgotPassword = () => {
         description: "Revisa tu bandeja de entrada para restablecer tu contraseña",
       });
 
-    } catch (error: any) {
-      console.error('Error sending reset email:', error);
+    } catch (error) {
+      console.error('Error enviando email de recuperación:', error);
+      const message = error instanceof Error ? error.message : "No se pudo enviar el correo de recuperación";
       toast({
         title: "Error",
-        description: error.message || "No se pudo enviar el correo de recuperación",
+        description: message,
         variant: "destructive",
       });
     } finally {

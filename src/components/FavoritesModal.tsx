@@ -126,8 +126,11 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: Fav
         id: product.id,
         name: product.name,
         price: product.price,
+        originalPrice: product.originalPrice,
         image: product.image,
         category: product.category,
+        rating: product.rating,
+        isNew: product.isNew,
         quantity: 1,
       });
     }

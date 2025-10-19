@@ -29,7 +29,8 @@ interface Product {
   description?: string;
   price: number;
   image_url?: string;
-  category: string;
+  id_category: string; // uuid
+  category_name: string;
   created_at?: string;
   updated_at?: string;
   variants: ProductVariant[];
@@ -45,6 +46,7 @@ export interface CartItem {
 
 const Products = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -54,9 +56,9 @@ const Products = () => {
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 1000000]);
   const [sortBy, setSortBy] = useState("newest");
-  const { toast } = useToast();
   const [favoritesMap, setFavoritesMap] = useState<Record<number, boolean>>({});
 
+  // Carga favoritos
   const refreshFavorites = async () => {
     const favorites = await getFavoritesFromEdgeRaw();
     const map: Record<number, boolean> = {};
@@ -66,36 +68,9 @@ const Products = () => {
     setFavoritesMap(map);
   };
 
-  // carga favoritos al montar
   useEffect(() => {
     refreshFavorites();
   }, []);
-
-  // First, define categories
-  const categories = ["all", ...Array.from(new Set(products.map(p => p.category)))];
-
-  // Filtrado de productos
-  const filteredProducts = products.filter(product => {
-    const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
-    const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
-    const sizeMatch = selectedSizes.length === 0 ||
-      product.variants?.some(v =>
-        v.size && selectedSizes.includes(v.size.nombre_talla?.trim() || '') && v.stock > 0
-      );
-    return categoryMatch && priceMatch && sizeMatch;
-  });
-
-  // Ordenamiento
-  const sortedProducts = [...filteredProducts].sort((a, b) => {
-    switch (sortBy) {
-      case "price-low":
-        return a.price - b.price;
-      case "price-high":
-        return b.price - a.price;
-      default:
-        return b.id - a.id;
-    }
-  });
 
   // Carga productos de supabase
   useEffect(() => {
@@ -108,13 +83,20 @@ const Products = () => {
           .order('id', { ascending: false });
 
         if (productsError) throw productsError;
+        if (!productsData || productsData.length === 0) {
+          setProducts([]);
+          return;
+        }
 
         const { data: variantsData } = await supabase
           .from('products_variants')
           .select('*');
-        const { data: sizesData } = await supabase
+        const { data: sizesData, error: sizesError } = await supabase
           .from('sizes')
           .select('*');
+        if (sizesError) {
+          // Continuar sin tallas si hay error
+        }
 
         const transformedProducts = productsData?.map(product => {
           const productVariants = (variantsData || [])
@@ -136,10 +118,39 @@ const Products = () => {
         setLoadingProducts(false);
       }
     };
-
     fetchProducts();
   }, [toast]);
 
+  // Categories para filtros
+  const categoriesForFilters = ["all", ...Array.from(new Set(products.map(p => p.category_name || p.category || "Sin categoría")))];
+
+  // Filtrado de productos
+  const filteredProducts = products.filter(product => {
+    const categoryMatch = selectedCategory === "all" || product.category_name === selectedCategory;
+    const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
+    const sizeMatch = selectedSizes.length === 0 ||
+      product.variants?.some(v =>
+        v.size && selectedSizes.includes(v.size.nombre_talla?.trim() || '') && v.stock > 0
+      );
+    return categoryMatch && priceMatch && sizeMatch;
+  });
+
+  // Ordenamiento
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    switch (sortBy) {
+      case "price-low":
+        return a.price - b.price;
+      case "price-high":
+        return b.price - a.price;
+      default:
+        return b.id - a.id;
+    }
+  });
+
+  // Calcular precio máximo para filtro
+  const maxPrice = products.reduce((max, p) => Math.max(max, p.price), 0);
+
+  // Handlers de carrito
   const handleAddToCart = (product: Product) => {
     setCartItems(prev => {
       const existingItem = prev.find(item => item.id === product.id);
@@ -148,7 +159,7 @@ const Products = () => {
         name: product.name,
         price: product.price,
         image: product.image_url || '',
-        category: product.category,
+        category: product.category_name || '',
         quantity: 1
       };
       if (existingItem) {
@@ -193,7 +204,7 @@ const Products = () => {
 
   const handleClearFilters = () => {
     setSelectedCategory("all");
-    setPriceRange([0, 1000000]);
+    setPriceRange([0, maxPrice]);
     setSelectedSizes([]);
     setSortBy("newest");
   };
@@ -220,7 +231,7 @@ const Products = () => {
               <span className="gradient-text">Todos los</span> Productos
             </h1>
             <p className="text-muted-foreground text-lg">
-              Descubre toda nuestra colección de moda juvenil - {sortedProducts.length} productos encontrados
+              Descubre toda nuestra colección de moda juvenil - {sortedProducts.length} productos encontrados de {products.length} totales
             </p>
           </div>
 
@@ -228,7 +239,7 @@ const Products = () => {
             <div className="lg:col-span-1">
               <div className="sticky top-24">
                 <ProductFilters
-                  categories={categories}
+                  categories={categoriesForFilters}
                   selectedCategory={selectedCategory}
                   onCategoryChange={setSelectedCategory}
                   priceRange={priceRange}
@@ -238,6 +249,8 @@ const Products = () => {
                   selectedSizes={selectedSizes}
                   onSizeChange={setSelectedSizes}
                   onClearFilters={handleClearFilters}
+                  maxPrice={maxPrice}
+                  allCategoryId={undefined}
                 />
               </div>
             </div>
@@ -274,10 +287,10 @@ const Products = () => {
                         name={product.name}
                         price={product.price}
                         image={product.image_url}
-                        category={product.categories?.name || "Sin categoría"}
+                        category={product.category_name || ''}
+                        variants={product.variants || []}
                         description={product.description}
                         created_at={product.created_at}
-                        variants={product.variants}
                         onAddToCart={() => handleAddToCart(product)}
                         onClick={() => handleProductClick(product)}
                         isFavorite={!!favoritesMap[product.id]}

@@ -274,3 +274,40 @@ All colors MUST be HSL.
   transform: scaleX(1);
   transform-origin: bottom left;
 }
+
+/* Admin navigation link animation */
+.admin-nav-link {
+  position: relative;
+}
+
+.admin-nav-link::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  transform: scaleX(0);
+  height: 2px;
+  bottom: -2px;
+  left: 0;
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)));
+  transform-origin: bottom right;
+  transition: transform 0.3s ease-out;
+}
+
+.admin-nav-link:hover::after {
+  transform: scaleX(1);
+  transform-origin: bottom left;
+}
+
+/* Mantener subrayado cuando está activo */
+.admin-nav-link[data-state="active"]::after {
+  transform: scaleX(1);
+  transform-origin: bottom left;
+}
+
+/* Eliminar outlines de los componentes de navegación del admin */
+.admin-nav-link,
+.admin-nav-link:focus,
+.admin-nav-link:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}

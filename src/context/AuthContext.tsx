@@ -1,9 +1,10 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import type { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: any | null;
+  user: User | null;
   loading: boolean;
 }
 
@@ -13,9 +14,9 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
 });
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,7 +41,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setIsAuthenticated(!!session);
       setUser(session?.user || null);
     } catch (error) {
-      console.error('Error checking user session:', error);
+      console.error('Error verificando la sesión de usuario:', error);
     } finally {
       setLoading(false);
     }
@@ -53,6 +54,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
