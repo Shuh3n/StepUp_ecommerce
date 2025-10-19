@@ -124,11 +124,12 @@ const ProductDetail = () => {
         console.log('Transformed product:', transformedProduct);
         
         setProduct(transformedProduct);
-      } catch (error: any) {
+      } catch (error) {
         console.error('Detailed error:', error);
+        const message = error instanceof Error ? error.message : 'No se pudo cargar el producto';
         toast({
           title: 'Error al cargar el producto',
-          description: error.message || 'No se pudo cargar el producto',
+          description: message,
           variant: 'destructive',
         });
         navigate('/productos');

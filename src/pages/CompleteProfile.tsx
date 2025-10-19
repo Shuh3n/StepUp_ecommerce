@@ -15,7 +15,7 @@ const PhoneRequest = () => {
   const [isChecking, setIsChecking] = useState(false);
   const [phoneError, setPhoneError] = useState("");
   const [identificationError, setIdentificationError] = useState("");
-  const [userSession, setUserSession] = useState<any>(null);
+  const [userSession, setUserSession] = useState<{ user: { id: string; email?: string | null; user_metadata?: Record<string, unknown> } } | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -25,7 +25,7 @@ const PhoneRequest = () => {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Session error:', error);
+          console.error('Error de sesión:', error);
           navigate('/login');
           return;
         }
@@ -45,7 +45,7 @@ const PhoneRequest = () => {
           .maybeSingle();
 
         if (userError) {
-          console.error('User data error:', userError);
+          console.error('Error en datos de usuario:', userError);
           return;
         }
 
@@ -61,7 +61,7 @@ const PhoneRequest = () => {
         }
 
       } catch (error) {
-        console.error('Error in checkUser:', error);
+  console.error('Error en checkUser:', error);
       }
     };
 
@@ -80,13 +80,13 @@ const PhoneRequest = () => {
         .maybeSingle();
 
       if (error) {
-        console.error('Error checking identification:', error);
+  console.error('Error verificando la identificación:', error);
         return false;
       }
 
       return !!data;
     } catch (error) {
-      console.error('Exception checking identification:', error);
+  console.error('Excepción verificando la identificación:', error);
       return false;
     }
   };
@@ -103,13 +103,13 @@ const PhoneRequest = () => {
         .maybeSingle();
 
       if (error) {
-        console.error('Error checking phone:', error);
+  console.error('Error verificando el teléfono:', error);
         return false;
       }
 
       return !!data;
     } catch (error) {
-      console.error('Exception checking phone:', error);
+  console.error('Excepción verificando el teléfono:', error);
       return false;
     }
   };
@@ -136,7 +136,7 @@ const PhoneRequest = () => {
         setIdentificationError("");
       }
     } catch (error) {
-      console.error('Validation error:', error);
+  console.error('Error de validación:', error);
       setIdentificationError("Error al verificar la cédula");
     } finally {
       setIsChecking(false);
@@ -151,7 +151,7 @@ const PhoneRequest = () => {
     }
 
     // Validar formato básico de teléfono
-    if (!/^[\d\s\+\-\(\)]+$/.test(phone)) {
+    if (!/^[\d\s+\-()]+$/.test(phone)) {
       setPhoneError("Formato de teléfono inválido");
       return;
     }
@@ -289,11 +289,12 @@ const PhoneRequest = () => {
       //   navigate('/profile', { replace: true });
       // }, 100);
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error in handleSubmit:', error);
+      const message = error instanceof Error ? error.message : "No se pudo guardar la información. Por favor, intenta de nuevo.";
       toast({
         title: "Error",
-        description: error.message || "No se pudo guardar la información. Por favor, intenta de nuevo.",
+        description: message,
         variant: "destructive",
       });
     } finally {

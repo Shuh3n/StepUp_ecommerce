@@ -5,8 +5,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Filter, X } from "lucide-react";
 
+interface CategoryOption {
+  id: string;
+  name: string;
+}
 interface ProductFiltersProps {
-  categories: string[];
+  categories: CategoryOption[];
   selectedCategory: string;
   onCategoryChange: (category: string) => void;
   priceRange: [number, number];
@@ -15,7 +19,12 @@ interface ProductFiltersProps {
   onSortChange: (sort: string) => void;
   selectedSizes: string[];
   onSizeChange: (sizes: string[]) => void;
-  onClearFilters: () => void;
+  onClearFilters?: () => void;
+  maxPrice?: number;
+  // Optional: id of the category that represents "All/Todas" in DB
+  allCategoryId?: string;
+  // Optional: size labels to render (from DB)
+  sizes?: string[];
 }
 
 const ProductFilters = ({
@@ -29,11 +38,13 @@ const ProductFilters = ({
   selectedSizes,
   onSizeChange,
   onClearFilters,
+  maxPrice = 300000, // Nuevo prop con valor por defecto
+  allCategoryId,
+  sizes: sizesProp,
 }: ProductFiltersProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  
-  const sizes = ["XS", "S", "M", "L", "XL", "XXL"];
-  const maxPrice = 150000;
+  // Prefer DB-provided sizes; fallback to common list
+  const sizes = sizesProp && sizesProp.length > 0 ? sizesProp : [ "S", "M", "L", "XL" ];
 
   const handleSizeToggle = (size: string) => {
     const newSizes = selectedSizes.includes(size)
@@ -42,10 +53,12 @@ const ProductFilters = ({
     onSizeChange(newSizes);
   };
 
-  const hasActiveFilters = selectedCategory !== "all" || 
+  const defaultAllId = allCategoryId ?? "all";
+  const hasActiveFilters = selectedCategory !== defaultAllId || 
                           priceRange[0] > 0 || 
                           priceRange[1] < maxPrice || 
                           selectedSizes.length > 0;
+  
 
   return (
     <div className="space-y-6">
@@ -74,11 +87,6 @@ const ProductFilters = ({
         {/* Header */}
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Filtros</h3>
-          {hasActiveFilters && (
-            <Button variant="ghost" size="sm" onClick={onClearFilters}>
-              Limpiar todo
-            </Button>
-          )}
         </div>
 
         {/* Sort */}
@@ -105,10 +113,9 @@ const ProductFilters = ({
               <SelectValue placeholder="Seleccionar categoría" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas las categorías</SelectItem>
-              {categories.filter(cat => cat !== "all").map(category => (
-                <SelectItem key={category} value={category}>
-                  {category}
+              {categories.map(cat => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {cat.name}
                 </SelectItem>
               ))}
             </SelectContent>

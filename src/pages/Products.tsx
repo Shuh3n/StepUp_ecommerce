@@ -29,7 +29,8 @@ interface Product {
   description?: string;
   price: number;
   image_url?: string;
-  category: string;
+  id_category: string; // uuid
+  category_name: string;
   created_at?: string;
   updated_at?: string;
   variants: ProductVariant[];
@@ -99,6 +100,7 @@ const Products = () => {
 
   // Carga productos de supabase
   useEffect(() => {
+    let productsChannel: ReturnType<typeof supabase.channel> | null = null;
     const fetchProducts = async () => {
       setLoadingProducts(true);
       try {
@@ -108,6 +110,10 @@ const Products = () => {
           .order('id', { ascending: false });
 
         if (productsError) throw productsError;
+        if (!productsData || productsData.length === 0) {
+          setProducts([]);
+          return;
+        }
 
         const { data: variantsData } = await supabase
           .from('products_variants')
@@ -115,6 +121,9 @@ const Products = () => {
         const { data: sizesData } = await supabase
           .from('sizes')
           .select('*');
+        if (sizesError) {
+          // Continuar sin tallas si hay error
+        }
 
         const transformedProducts = productsData?.map(product => {
           const productVariants = (variantsData || [])
@@ -138,7 +147,6 @@ const Products = () => {
     };
 
     fetchProducts();
-  }, [toast]);
 
   const handleAddToCart = (product: Product) => {
     setCartItems(prev => {
@@ -148,7 +156,7 @@ const Products = () => {
         name: product.name,
         price: product.price,
         image: product.image_url || '',
-        category: product.category,
+  category: product.category_name || '',
         quantity: 1
       };
       if (existingItem) {
@@ -193,7 +201,7 @@ const Products = () => {
 
   const handleClearFilters = () => {
     setSelectedCategory("all");
-    setPriceRange([0, 1000000]);
+    setPriceRange([0, maxPrice]); // Usar el precio máximo dinámico
     setSelectedSizes([]);
     setSortBy("newest");
   };
@@ -220,15 +228,16 @@ const Products = () => {
               <span className="gradient-text">Todos los</span> Productos
             </h1>
             <p className="text-muted-foreground text-lg">
-              Descubre toda nuestra colección de moda juvenil - {sortedProducts.length} productos encontrados
+              Descubre toda nuestra colección de moda juvenil - {sortedProducts.length} productos encontrados de {products.length} totales
             </p>
+
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
             <div className="lg:col-span-1">
               <div className="sticky top-24">
                 <ProductFilters
-                  categories={categories}
+                  categories={categoriesForFilters}
                   selectedCategory={selectedCategory}
                   onCategoryChange={setSelectedCategory}
                   priceRange={priceRange}
@@ -238,6 +247,8 @@ const Products = () => {
                   selectedSizes={selectedSizes}
                   onSizeChange={setSelectedSizes}
                   onClearFilters={handleClearFilters}
+                  maxPrice={maxPrice} // Pasar el precio máximo dinámico
+                  allCategoryId={dbAllCategoryId}
                 />
               </div>
             </div>
@@ -274,6 +285,8 @@ const Products = () => {
                         name={product.name}
                         price={product.price}
                         image={product.image_url}
+                        category={product.category_name || ''}
+                        variants={product.variants || []}
                         category={product.categories?.name || "Sin categoría"}
                         description={product.description}
                         created_at={product.created_at}

@@ -396,8 +396,8 @@ export default function Register() {
         } 
       });
 
-    } catch (err: any) {
-      console.error('Registration error:', err);
+    } catch (err) {
+  console.error('Error en el registro:', err);
       
       toast({
         title: "Error inesperado",

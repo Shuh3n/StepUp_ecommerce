@@ -21,7 +21,7 @@ interface ProductDetailModalProps {
     sizes?: string[];
     colors?: string[];
   } | null;
-  onAddToCart: (product: any) => void;
+  onAddToCart: (product: { id: number; name: string; price: number; originalPrice?: number; image?: string; image_url?: string; category: string; rating: number; isNew?: boolean; description?: string; sizes?: string[]; colors?: string[]; selectedSize?: string; selectedColor?: string; quantity: number; }) => void;
 }
 
 const ProductDetailModal = ({ isOpen, onClose, product, onAddToCart }: ProductDetailModalProps) => {
