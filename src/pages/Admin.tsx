@@ -1446,11 +1446,11 @@ const Admin = () => {
 
     return (
         <div className="min-h-screen bg-background">
-            <Navbar cartItems={0} onCartClick={() => { }} onContactClick={() => {}} onFavoritesClick={() => {}} />
-            <main className="pt-16 sm:pt-20 lg:pt-24 px-2 sm:px-4 lg:px-8 pb-8 sm:pb-12 lg:pb-16">
-                <div className="w-full max-w-7xl mx-auto">
-                    <div className="mb-4 sm:mb-6 lg:mb-8">
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold">
+            <Navbar cartItems={0} onCartClick={() => {}} onContactClick={() => {}} onFavoritesClick={() => {}} />
+            <main className="pt-24 px-4 sm:px-6 lg:px-8 pb-16">
+                <div className="w-[70vw] mx-auto">
+                    <div className="mb-8">
+                        <h1 className="text-4xl font-bold">
                             <span className="gradient-text">Panel</span> de Administración
                         </h1>
                         <p className="text-muted-foreground mt-1 sm:mt-2 text-sm sm:text-base">

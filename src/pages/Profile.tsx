@@ -140,11 +140,7 @@ const Profile = () => {
 
   return (
     <div className="w-[70vw] mx-auto">
-      <Navbar cartItems={0} onCartClick={() => { } } onContactClick={function (): void {
-        throw new Error("Función no implementada.");
-      } } onFavoritesClick={function (): void {
-        throw new Error("Función no implementada.");
-      } } />
+      <Navbar cartItems={0} onCartClick={() => {}} onContactClick={() => {}} onFavoritesClick={() => {}} />
       <main className="pt-24 px-4 sm:px-6 lg:px-8 pb-16">
         <Tabs defaultValue={activeTab} className="space-y-8">
           <TabsList className="grid grid-cols-3 w-full max-w-md">
