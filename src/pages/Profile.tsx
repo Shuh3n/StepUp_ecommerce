@@ -5,17 +5,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { User, Package, Heart } from "lucide-react";
+import { User, Package, Heart, Edit, Trash2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { supabase } from "../lib/supabase";
+import { useNavigate } from "react-router-dom";
 
 const Profile = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("profile");
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
   const [profileData, setProfileData] = useState({
-  full_name: "Usuario",
+    full_name: "Usuario",
     email: "usuario@example.com",
+    identification: "",
     phone: "",
     address: ""
   });
@@ -51,8 +55,9 @@ const Profile = () => {
 
       // 3. Combinar info de auth y tabla users
       setProfileData({
-  full_name: dbUser?.full_name || user.user_metadata?.full_name || "Usuario",
+        full_name: dbUser?.full_name || user.user_metadata?.full_name || "Usuario",
         email: user.email || "usuario@example.com",
+        identification: dbUser?.identification || user.user_metadata?.identification || "",
         phone: dbUser?.phone || user.user_metadata?.phone || "",
         address: dbUser?.address || ""
       });
@@ -65,22 +70,69 @@ const Profile = () => {
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validación de campos vacíos
+    if (!profileData.full_name.trim()) {
+      toast({ 
+        title: "Error", 
+        description: "El nombre no puede estar vacío", 
+        variant: "destructive" 
+      });
+      return;
+    }
 
-    // Actualizar en tu tabla users
-    const { error } = await supabase
-      .from("users")
-      .update({
-  full_name: profileData.full_name,
-        phone: profileData.phone,
-        address: profileData.address,
-      })
-      .eq("email", profileData.email);
+    if (!profileData.phone.trim() || !/^\d{10}$/.test(profileData.phone)) {
+      toast({ 
+        title: "Error", 
+        description: "El teléfono debe tener exactamente 10 números", 
+        variant: "destructive" 
+      });
+      return;
+    }
 
-    if (error) {
+    if (!profileData.address.trim()) {
+      toast({ 
+        title: "Error", 
+        description: "La dirección no puede estar vacía", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("users")
+        .update({
+          full_name: profileData.full_name.trim(),
+          phone: profileData.phone.trim(),
+          address: profileData.address.trim(),
+        })
+        .eq("email", profileData.email);
+
+      if (error) throw error;
+
+      toast({ title: "Perfil actualizado", description: "Cambios guardados con éxito" });
+      setIsEditing(false);
+    } catch (error) {
       console.error("Error actualizando perfil:", error);
       toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" });
-    } else {
-      toast({ title: "Perfil actualizado", description: "Cambios guardados con éxito" });
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (window.confirm("¿Estás seguro de que deseas eliminar tu cuenta? Esta acción no se puede deshacer.")) {
+      try {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+
+        // Aquí podrías agregar la lógica para eliminar los datos del usuario de tu tabla users
+
+        toast({ title: "Cuenta eliminada", description: "Tu cuenta ha sido eliminada exitosamente" });
+        navigate('/');
+      } catch (error) {
+        console.error("Error eliminando cuenta:", error);
+        toast({ title: "Error", description: "No se pudo eliminar la cuenta", variant: "destructive" });
+      }
     }
   };
 
@@ -107,50 +159,123 @@ const Profile = () => {
             <Card className="glass border-white/20">
               <CardHeader>
                 <CardTitle>Información Personal</CardTitle>
-                <CardDescription>Actualiza tus datos personales y de contacto</CardDescription>
+                <CardDescription>Tu información de perfil</CardDescription>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleUpdateProfile} className="space-y-6">
+                <div className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label htmlFor="full_name">Nombre completo</Label>
-                      <Input
-                        id="full_name"
-                        value={profileData.full_name}
-                        onChange={(e) =>
-                          setProfileData({ ...profileData, full_name: e.target.value })
-                        }
-                      />
+                      <Label>Nombre completo *</Label>
+                      {isEditing ? (
+                        <Input
+                          required
+                          value={profileData.full_name}
+                          onChange={(e) =>
+                            setProfileData({ 
+                              ...profileData, 
+                              full_name: e.target.value 
+                            })
+                          }
+                          placeholder="Ingresa tu nombre completo"
+                          className={!profileData.full_name.trim() ? "border-red-500" : ""}
+                        />
+                      ) : (
+                        <p className="text-foreground/80 pt-2">{profileData.full_name}</p>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="email">Correo electrónico</Label>
-                      <Input id="email" type="email" value={profileData.email} disabled />
+                      <Label>Cédula</Label>
+                      <p className="text-foreground/80 pt-2">{profileData.identification}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="phone">Teléfono</Label>
-                      <Input
-                        id="phone"
-                        value={profileData.phone}
-                        onChange={(e) =>
-                          setProfileData({ ...profileData, phone: e.target.value })
-                        }
-                      />
+                      <Label>Correo electrónico</Label>
+                      <p className="text-foreground/80 pt-2">{profileData.email}</p>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="address">Dirección</Label>
-                      <Input
-                        id="address"
-                        value={profileData.address}
-                        onChange={(e) =>
-                          setProfileData({ ...profileData, address: e.target.value })
-                        }
-                      />
+                      <Label>Teléfono * (10 dígitos)</Label>
+                      {isEditing ? (
+                        <Input
+                          required
+                          type="tel"
+                          maxLength={10}
+                          pattern="\d{10}"
+                          value={profileData.phone}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            setProfileData({ 
+                              ...profileData, 
+                              phone: value 
+                            });
+                          }}
+                          placeholder="Ingresa tu teléfono (10 dígitos)"
+                          className={
+                            !profileData.phone.trim() || !/^\d{10}$/.test(profileData.phone) 
+                              ? "border-red-500" 
+                              : ""
+                          }
+                        />
+                      ) : (
+                        <p className="text-foreground/80 pt-2">{profileData.phone || "No especificado"}</p>
+                      )}
+                      {isEditing && profileData.phone && !/^\d{10}$/.test(profileData.phone) && (
+                        <p className="text-sm text-red-500 mt-1">
+                          El teléfono debe tener exactamente 10 números
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Dirección *</Label>
+                      {isEditing ? (
+                        <Input
+                          required
+                          value={profileData.address}
+                          onChange={(e) =>
+                            setProfileData({ 
+                              ...profileData, 
+                              address: e.target.value 
+                            })
+                          }
+                          placeholder="Ingresa tu dirección"
+                          className={!profileData.address.trim() ? "border-red-500" : ""}
+                        />
+                      ) : (
+                        <p className="text-foreground/80 pt-2">{profileData.address || "No especificada"}</p>
+                      )}
                     </div>
                   </div>
-                  <Button type="submit" variant="hero">
-                    Guardar Cambios
-                  </Button>
-                </form>
+                  
+                  <div className="flex gap-4 pt-4">
+                    {isEditing ? (
+                      <>
+                        <Button onClick={handleUpdateProfile} variant="hero">
+                          Guardar Cambios
+                        </Button>
+                        <Button onClick={() => setIsEditing(false)} variant="outline">
+                          Cancelar
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button 
+                          onClick={() => setIsEditing(true)}
+                          variant="outline"
+                          className="flex items-center gap-2"
+                        >
+                          <Edit className="h-4 w-4" />
+                          Modificar Información
+                        </Button>
+                        <Button 
+                          onClick={handleDeleteAccount}
+                          variant="destructive"
+                          className="flex items-center gap-2"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Eliminar Cuenta
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X, Plus, Minus, ShoppingBag, Trash2 } from "lucide-react";
+import { X, Plus, Minus, ShoppingCart, Trash2 } from "lucide-react";
 
 interface CartItem {
   id: number;
@@ -55,7 +55,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/20">
           <div className="flex items-center gap-3">
-            <ShoppingBag className="h-6 w-6 text-primary" />
+            <ShoppingCart className="h-6 w-6 text-primary" />
             <h2 className="text-xl font-bold">Carrito</h2>
             {itemCount > 0 && (
               <Badge className="bg-primary text-primary-foreground">
@@ -72,7 +72,7 @@ const Cart = ({ isOpen, onClose, items, onUpdateQuantity, onRemoveItem }: CartPr
         <div className="flex-1 overflow-y-auto p-6">
           {items.length === 0 ? (
             <div className="text-center py-12">
-              <ShoppingBag className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <ShoppingCart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-medium mb-2">Tu carrito está vacío</h3>
               <p className="text-muted-foreground mb-6">
                 Agrega algunos productos increíbles a tu carrito
