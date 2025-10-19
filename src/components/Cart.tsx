@@ -3,8 +3,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { X, Plus, Minus, ShoppingCart, Trash2, Edit } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
+
+// Edge Functions URLs
+const EDGE_ADD_TO_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/add-to-cart";
+const EDGE_REMOVE_FROM_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/remove-from-cart";
+const EDGE_GET_CART_ITEMS = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-cart-items";
 
 interface CartItem {
+  cartItemId: string; // id único de la fila (uuid de cart_items)
   id: number;
   name: string;
   price: number;
@@ -24,33 +32,86 @@ interface AvailableSize {
 interface CartProps {
   isOpen: boolean;
   onClose: () => void;
-  items: CartItem[];
+  items?: CartItem[];
   onUpdateQuantity: (id: number, quantity: number, selectedSize?: string) => void;
   onRemoveItem: (id: number, selectedSize?: string) => void;
   onChangeSizeInCart?: (id: number, oldSize: string, newSize: string) => void;
   availableSizes?: AvailableSize[];
 }
 
-const Cart = ({ 
-  isOpen, 
-  onClose, 
-  items, 
-  onUpdateQuantity, 
-  onRemoveItem, 
+const Cart = ({
+  isOpen,
+  onClose,
+  items: itemsProp = [],
+  onUpdateQuantity,
+  onRemoveItem,
   onChangeSizeInCart,
-  availableSizes = []
+  availableSizes = [],
 }: CartProps) => {
   const [isAnimating, setIsAnimating] = useState(false);
   const [editingSizeFor, setEditingSizeFor] = useState<string | null>(null);
-  
-  const total = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
+  const [items, setItems] = useState<CartItem[]>(itemsProp);
+  const { toast } = useToast();
+
+  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
+  // Fetch cart items from Edge Function when Cart opens
   useEffect(() => {
+    const fetchCartItems = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const access_token = data?.session?.access_token;
+        if (!access_token) return;
+
+        const response = await fetch(EDGE_GET_CART_ITEMS, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${access_token}`,
+          },
+        });
+        const result = await response.json();
+        if (result.ok && Array.isArray(result.cart_items)) {
+          setItems(
+            result.cart_items.map((item: any) => ({
+              cartItemId: item.cartItemId ?? item.id,
+              id: item.id ?? item.product_id, // Asegura que el id corresponde al producto
+              name: item.name ?? "",
+              price: item.price ?? 0,
+              image: item.image ?? "",
+              category: item.category ?? "",
+              quantity: item.quantity,
+              selectedSize: item.selectedSize ?? "",
+              variantId: item.variantId ?? item.variant_id,
+            }))
+          );
+        } else {
+          setItems([]);
+          if (result.error) {
+            toast({
+              title: "Error",
+              description: result.error,
+              variant: "destructive",
+            });
+          }
+        }
+      } catch (e: any) {
+        toast({
+          title: "Error",
+          description: e?.message || "No se pudo cargar el carrito",
+          variant: "destructive",
+        });
+        setItems([]);
+      }
+    };
+
     if (isOpen) {
       setIsAnimating(true);
+      fetchCartItems();
     }
-  }, [isOpen]);
+  }, [isOpen, toast]);
 
   const handleClose = () => {
     setIsAnimating(false);
@@ -64,22 +125,184 @@ const Cart = ({
     }
   };
 
+  // Agregar al carrito (sumar cantidad)
+  const handleAddQuantity = async (item: CartItem) => {
+    setLoadingItemId(item.cartItemId);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const access_token = data?.session?.access_token;
+      if (!access_token) throw new Error("Debes iniciar sesión.");
+
+      const response = await fetch(EDGE_ADD_TO_CART, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+        body: JSON.stringify({
+          product_id: item.id,
+          variant_id: item.variantId ?? null,
+          quantity: 1,
+        }),
+      });
+      const result = await response.json();
+      if (result.ok) {
+        toast({
+          title: "Producto actualizado",
+          description: `Se aumentó la cantidad de ${item.name} en el carrito.`,
+        });
+        setTimeout(() => {
+          setLoadingItemId(null);
+          if (isOpen) {
+            (async () => {
+              const { data } = await supabase.auth.getSession();
+              const access_token = data?.session?.access_token;
+              if (!access_token) return;
+              const response = await fetch(EDGE_GET_CART_ITEMS, {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${access_token}`,
+                },
+              });
+              const result = await response.json();
+              if (result.ok && Array.isArray(result.cart_items)) {
+                setItems(
+                  result.cart_items.map((item: any) => ({
+                    cartItemId: item.cartItemId ?? item.id,
+                    id: item.id ?? item.product_id,
+                    name: item.name ?? "",
+                    price: item.price ?? 0,
+                    image: item.image ?? "",
+                    category: item.category ?? "",
+                    quantity: item.quantity,
+                    selectedSize: item.selectedSize ?? "",
+                    variantId: item.variantId ?? item.variant_id,
+                  }))
+                );
+              }
+            })();
+          }
+        }, 500);
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo actualizar el carrito",
+          variant: "destructive",
+        });
+        setLoadingItemId(null);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo actualizar el carrito",
+        variant: "destructive",
+      });
+      setLoadingItemId(null);
+    }
+  };
+
+  // Disminuir cantidad (solo actualiza local, pero podrías agregar edge si lo deseas)
+  const handleSubtractQuantity = async (item: CartItem) => {
+    if (item.quantity > 1) {
+      onUpdateQuantity(item.id, item.quantity - 1, item.selectedSize);
+    }
+  };
+
+  // Eliminar producto del carrito
+  const handleRemoveFromCart = async (item: CartItem) => {
+    setLoadingItemId(item.cartItemId);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const access_token = data?.session?.access_token;
+      if (!access_token) throw new Error("Debes iniciar sesión.");
+
+      const response = await fetch(EDGE_REMOVE_FROM_CART, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+        body: JSON.stringify({
+          product_id: item.id,
+          variant_id: item.variantId ?? null,
+        }),
+      });
+      const result = await response.json();
+      if (result.ok) {
+        toast({
+          title: "Producto eliminado",
+          description: `El producto ${item.name} fue eliminado del carrito.`,
+        });
+        setTimeout(() => {
+          setLoadingItemId(null);
+          if (isOpen) {
+            (async () => {
+              const { data } = await supabase.auth.getSession();
+              const access_token = data?.session?.access_token;
+              if (!access_token) return;
+              const response = await fetch(EDGE_GET_CART_ITEMS, {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${access_token}`,
+                },
+              });
+              const result = await response.json();
+              if (result.ok && Array.isArray(result.cart_items)) {
+                setItems(
+                  result.cart_items.map((item: any) => ({
+                    cartItemId: item.cartItemId ?? item.id,
+                    id: item.id ?? item.product_id,
+                    name: item.name ?? "",
+                    price: item.price ?? 0,
+                    image: item.image ?? "",
+                    category: item.category ?? "",
+                    quantity: item.quantity,
+                    selectedSize: item.selectedSize ?? "",
+                    variantId: item.variantId ?? item.variant_id,
+                  }))
+                );
+              }
+            })();
+          }
+        }, 500);
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo eliminar del carrito",
+          variant: "destructive",
+        });
+        setLoadingItemId(null);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo eliminar del carrito",
+        variant: "destructive",
+      });
+      setLoadingItemId(null);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[9999] flex">
       {/* Backdrop */}
-      <div 
+      <div
         className={`fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300 ${
-          isAnimating ? 'opacity-100' : 'opacity-0'
+          isAnimating ? "opacity-100" : "opacity-0"
         }`}
         onClick={handleClose}
       />
-      
+
       {/* Cart Panel */}
-      <div className={`ml-auto w-full max-w-md h-full glass border-l border-white/20 flex flex-col transition-transform duration-300 z-[10000] ${
-        isAnimating ? 'translate-x-0' : 'translate-x-full'
-      }`}>
+      <div
+        className={`ml-auto w-full max-w-md h-full glass border-l border-white/20 flex flex-col transition-transform duration-300 z-[10000] ${
+          isAnimating ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/20">
           <div className="flex items-center gap-3">
@@ -112,12 +335,13 @@ const Cart = ({
           ) : (
             <div className="space-y-4">
               {items.map((item) => {
-                const itemKey = `${item.id}-${item.selectedSize || 'no-size'}`;
+                const itemKey = item.cartItemId;
                 const isEditingSize = editingSizeFor === itemKey;
-                
+                const isItemLoading = loadingItemId === item.cartItemId;
+
                 return (
                   <div
-                    key={itemKey}
+                    key={item.cartItemId}
                     className="flex gap-4 p-4 bg-card rounded-xl border border-white/10"
                   >
                     <img
@@ -125,7 +349,7 @@ const Cart = ({
                       alt={item.name}
                       className="w-16 h-16 object-cover rounded-lg"
                     />
-                    
+
                     <div className="flex-1">
                       <h4 className="font-medium text-sm mb-1">{item.name}</h4>
                       <div className="flex gap-2 mb-2">
@@ -137,7 +361,9 @@ const Cart = ({
                             {isEditingSize ? (
                               <Select
                                 value={item.selectedSize}
-                                onValueChange={(newSize) => handleSizeChange(item, newSize)}
+                                onValueChange={(newSize) =>
+                                  handleSizeChange(item, newSize)
+                                }
                               >
                                 <SelectTrigger className="h-6 w-16 text-xs">
                                   <SelectValue />
@@ -169,8 +395,7 @@ const Cart = ({
                         )}
                       </div>
                       <div className="text-primary font-bold">
-                        ${(item.price * item.quantity).toLocaleString()
-                        }
+                        ${(item.price * item.quantity).toLocaleString()}
                       </div>
                     </div>
 
@@ -178,32 +403,34 @@ const Cart = ({
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => onRemoveItem(item.id, item.selectedSize)}
+                        onClick={() => handleRemoveFromCart(item)}
                         className="h-6 w-6 text-destructive hover:text-destructive"
+                        disabled={isItemLoading}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
-                      
+
                       <div className="flex items-center gap-2">
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => onUpdateQuantity(item.id, item.quantity - 1, item.selectedSize)}
+                          onClick={() => handleSubtractQuantity(item)}
                           className="h-6 w-6"
-                          disabled={item.quantity <= 1}
+                          disabled={item.quantity <= 1 || isItemLoading}
                         >
                           <Minus className="h-3 w-3" />
                         </Button>
-                        
+
                         <span className="w-8 text-center text-sm font-medium">
                           {item.quantity}
                         </span>
-                        
+
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => onUpdateQuantity(item.id, item.quantity + 1, item.selectedSize)}
+                          onClick={() => handleAddQuantity(item)}
                           className="h-6 w-6"
+                          disabled={isItemLoading}
                         >
                           <Plus className="h-3 w-3" />
                         </Button>
@@ -225,7 +452,7 @@ const Cart = ({
                 ${total.toLocaleString()}
               </span>
             </div>
-            
+
             <div className="space-y-3">
               <Button variant="hero" className="w-full" size="lg">
                 Proceder al Pago
