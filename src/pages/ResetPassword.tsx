@@ -58,7 +58,7 @@ const ResetPassword = () => {
       }, 2000);
 
     } catch (error) {
-      console.error('Error updating password:', error);
+      console.error('Error actualizando la contraseña:', error);
       const message = error instanceof Error ? error.message : "No se pudo actualizar la contraseña";
       toast({
         title: "Error",

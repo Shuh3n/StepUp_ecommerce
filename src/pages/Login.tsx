@@ -7,6 +7,7 @@ import { Eye, EyeOff, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from '../lib/supabase';
 import { useNavigate, Link } from "react-router-dom";
+import { translateAuthError } from '@/lib/authErrors';
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -25,13 +26,13 @@ const Login = () => {
         .maybeSingle();
 
       if (error) {
-        console.error('Error checking user profile existence:', error);
+        console.error('Error verificando existencia de perfil de usuario:', error);
         return false;
       }
 
       return !!data;
     } catch (error) {
-      console.error('Exception checking user profile existence:', error);
+      console.error('Excepción verificando existencia de perfil de usuario:', error);
       return false;
     }
   };
@@ -88,7 +89,7 @@ const Login = () => {
               navigate('/complete-profile');
             }
           } catch (error) {
-            console.error('Error handling auth state change:', error);
+            console.error('Error manejando cambios de estado de auth:', error);
             navigate('/complete-profile');
           }
         }
@@ -113,8 +114,9 @@ const Login = () => {
       // a través del listener onAuthStateChange
 
     } catch (error) {
-      console.error('Error signing in:', error);
-      const message = error instanceof Error ? error.message : "No se pudo iniciar sesión";
+      console.error('Error iniciando sesión:', error);
+      const raw = error instanceof Error ? error.message : String(error);
+      const message = translateAuthError(raw) || 'No se pudo iniciar sesión. Intenta nuevamente.';
       toast({
         title: "Error",
         description: message,
@@ -134,8 +136,9 @@ const Login = () => {
       
       if (error) throw error;
     } catch (error) {
-      console.error('Error signing in with Google:', error);
-      const message = error instanceof Error ? error.message : "No se pudo iniciar sesión con Google";
+      console.error('Error iniciando sesión con Google:', error);
+      const raw = error instanceof Error ? error.message : String(error);
+      const message = translateAuthError(raw) || 'No se pudo iniciar sesión con Google. Intenta nuevamente.';
       toast({
         title: "Error",
         description: message,
@@ -143,6 +146,8 @@ const Login = () => {
       });
     }
   };
+
+  // translateAuthError ahora se importa desde src/lib/authErrors.ts
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">

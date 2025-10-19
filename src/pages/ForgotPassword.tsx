@@ -33,7 +33,7 @@ const ForgotPassword = () => {
       });
 
     } catch (error) {
-      console.error('Error sending reset email:', error);
+      console.error('Error enviando email de recuperación:', error);
       const message = error instanceof Error ? error.message : "No se pudo enviar el correo de recuperación";
       toast({
         title: "Error",

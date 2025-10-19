@@ -73,7 +73,7 @@ const AuthCallback = () => {
               created_at: new Date().toISOString(),
             });
           if (insertError) {
-            console.error('Error creando usuario en users:', insertError);
+      console.error('Error creando usuario en users:', insertError);
           } else {
             toast({
               title: '¡Perfil creado!',
@@ -85,7 +85,7 @@ const AuthCallback = () => {
 
       } catch (error) {
         const message = error instanceof Error ? error.message : 'No pudimos completar el inicio de sesión.';
-        console.error('Error en el callback de autenticación:', error);
+  console.error('Error en el callback de autenticación:', error);
         toast({
           title: 'Error de autenticación',
           description: message,

@@ -29,7 +29,7 @@ const AdminRoute: React.FC<Props> = ({ children }) => {
         .eq('auth_id', session.user.id)
         .maybeSingle();
 
-      if (error) console.error('Error verificando admin:', error);
+  if (error) console.error('Error verificando admin:', error);
       // Logs detallados para depuración
       console.log('auth_id sesión:', session.user.id);
       console.log('Resultado completo de consulta admins:', adminData);

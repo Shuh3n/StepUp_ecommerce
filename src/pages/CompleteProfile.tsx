@@ -25,7 +25,7 @@ const PhoneRequest = () => {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Session error:', error);
+          console.error('Error de sesión:', error);
           navigate('/login');
           return;
         }
@@ -45,7 +45,7 @@ const PhoneRequest = () => {
           .maybeSingle();
 
         if (userError) {
-          console.error('User data error:', userError);
+          console.error('Error en datos de usuario:', userError);
           return;
         }
 
@@ -61,7 +61,7 @@ const PhoneRequest = () => {
         }
 
       } catch (error) {
-        console.error('Error in checkUser:', error);
+  console.error('Error en checkUser:', error);
       }
     };
 
@@ -80,13 +80,13 @@ const PhoneRequest = () => {
         .maybeSingle();
 
       if (error) {
-        console.error('Error checking identification:', error);
+  console.error('Error verificando la identificación:', error);
         return false;
       }
 
       return !!data;
     } catch (error) {
-      console.error('Exception checking identification:', error);
+  console.error('Excepción verificando la identificación:', error);
       return false;
     }
   };
@@ -103,13 +103,13 @@ const PhoneRequest = () => {
         .maybeSingle();
 
       if (error) {
-        console.error('Error checking phone:', error);
+  console.error('Error verificando el teléfono:', error);
         return false;
       }
 
       return !!data;
     } catch (error) {
-      console.error('Exception checking phone:', error);
+  console.error('Excepción verificando el teléfono:', error);
       return false;
     }
   };
@@ -136,7 +136,7 @@ const PhoneRequest = () => {
         setIdentificationError("");
       }
     } catch (error) {
-      console.error('Validation error:', error);
+  console.error('Error de validación:', error);
       setIdentificationError("Error al verificar la cédula");
     } finally {
       setIsChecking(false);

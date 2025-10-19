@@ -69,13 +69,13 @@ const ProductDetail = () => {
           .single();
 
         if (error) {
-          console.error('Supabase error:', error);
+    console.error('Error de Supabase:', error);
           throw error;
         }
 
         if (!data) {
-          console.error('No data returned for ID:', id);
-          throw new Error('Product not found');
+          console.error('No se recibieron datos para ID:', id);
+          throw new Error('Producto no encontrado');
         }
 
         console.log('Raw data:', data); // Debug log
@@ -108,7 +108,7 @@ const ProductDetail = () => {
     if (id && !isNaN(Number(id))) {
       fetchProduct();
     } else {
-      console.error('Invalid ID:', id);
+      console.error('ID inválido:', id);
       toast({
         title: 'Error',
         description: 'ID de producto inválido',

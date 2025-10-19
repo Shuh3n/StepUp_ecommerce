@@ -51,15 +51,25 @@ import Navbar from "@/components/Navbar";
 import { supabase } from '../lib/supabase';
 import ProductFilters from "@/components/ProductFilters";
 import {
-    Dialog,
-    DialogTrigger,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
-    DialogClose
+        Dialog,
+        DialogTrigger,
+        DialogContent,
+        DialogHeader,
+        DialogTitle,
+        DialogDescription,
+        DialogFooter,
+        DialogClose
 } from "@/components/ui/dialog";
+import {
+    AlertDialog,
+    AlertDialogContent,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogAction,
+    AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 
 interface User {
     auth_id: string;
@@ -443,6 +453,9 @@ const Admin = () => {
     const [movementQty, setMovementQty] = useState<string>('1');
     const [qtyError, setQtyError] = useState<string | null>(null);
     const [alertStock, setAlertStock] = useState<string | null>(null);
+    // Variantes por producto para registrar movimientos por talla
+    const [productVariantOptions, setProductVariantOptions] = useState<Array<{ id_talla: number; nombre_talla: string; stock: number }>>([]);
+    const [selectedSizeForMovement, setSelectedSizeForMovement] = useState<number | null>(null);
     // Consulta real de productos desde Supabase
     const fetchProducts = useCallback(async () => {
         const { data, error } = await supabase
@@ -714,6 +727,48 @@ const Admin = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [editProduct]);
 
+    // Cargar variantes (tallas y stock) cuando se selecciona un producto para movimiento
+    useEffect(() => {
+        const loadProductVariants = async () => {
+            if (!selectedProductId) {
+                setProductVariantOptions([]);
+                setSelectedSizeForMovement(null);
+                return;
+            }
+            try {
+                const { data, error } = await supabase
+                    .from('products_variants')
+                    .select('id_talla, stock')
+                    .eq('id_producto', selectedProductId);
+                if (error) {
+                    setProductVariantOptions([]);
+                    return;
+                }
+                // Si no tenemos mapa id->nombre, intentar cargar tallas
+                if (!sizeIdToName || Object.keys(sizeIdToName).length === 0) {
+                    try {
+                        await fetchSizes();
+                    } catch {
+                        // ignorar, seguiremos con ids si no hay nombres
+                    }
+                }
+                // Mapear usando sizeIdToName para obtener nombre de talla
+                const opts = (data || []).map((v: { id_talla: number; stock: number }) => ({
+                    id_talla: v.id_talla,
+                    nombre_talla: sizeIdToName[v.id_talla] || String(v.id_talla),
+                    stock: v.stock || 0
+                }));
+                setProductVariantOptions(opts);
+                // Si hay al menos una talla con stock, pre-seleccionar la primera
+                const firstWithStock = opts.find(o => o.stock > 0);
+                setSelectedSizeForMovement(firstWithStock ? firstWithStock.id_talla : (opts[0]?.id_talla ?? null));
+            } catch (e) {
+                setProductVariantOptions([]);
+            }
+        };
+        loadProductVariants();
+    }, [selectedProductId, sizeIdToName, fetchSizes]);
+
     // Calcular rango dinámico de precios basado en productos reales
     const maxPrice = products.length > 0 ? Math.max(...products.map(p => p.price)) : 500000;
     const minPrice = products.length > 0 ? Math.min(...products.map(p => p.price)) : 0;
@@ -979,7 +1034,10 @@ const Admin = () => {
 
 
     // Actualizar inventario y registrar movimiento
-    const handleInventoryMovement = async () => {
+    const [confirmMovementOpen, setConfirmMovementOpen] = useState(false);
+
+    // Función que ejecuta realmente la actualización de inventario (reutilizable)
+    const performInventoryMovement = async () => {
         if (!selectedProductId) return toast({ title: 'Selecciona un producto' });
         const prod = products.find(p => p.id === selectedProductId);
         if (!prod) return toast({ title: 'Producto no encontrado' });
@@ -989,12 +1047,35 @@ const Admin = () => {
             return;
         }
         setQtyError(null);
+
+        // Calcular nuevo stock total del producto
         let newStock = prod.stock;
         if (movementType === 'venta') newStock -= qtyNum;
         if (movementType === 'devolucion' || movementType === 'reposicion') newStock += qtyNum;
         if (newStock < 0) return toast({ title: 'No se permiten cantidades negativas en inventario', variant: 'destructive' });
 
-        // Actualiza el stock en la tabla products
+        // Si hay una talla seleccionada, actualizar también la variante
+        let newVariantStock: number | null = null;
+        if (selectedSizeForMovement) {
+            const variant = productVariantOptions.find(v => v.id_talla === selectedSizeForMovement);
+            if (!variant) return toast({ title: 'Talla no encontrada para este producto', variant: 'destructive' });
+            newVariantStock = variant.stock;
+            if (movementType === 'venta') newVariantStock -= qtyNum;
+            if (movementType === 'devolucion' || movementType === 'reposicion') newVariantStock += qtyNum;
+            if (newVariantStock < 0) return toast({ title: 'No hay suficiente stock en la talla seleccionada', variant: 'destructive' });
+
+            // Actualizar la variante en DB
+            const { error: variantUpdateErr } = await supabase
+                .from('products_variants')
+                .update({ stock: newVariantStock })
+                .match({ id_producto: prod.id, id_talla: selectedSizeForMovement });
+            if (variantUpdateErr) {
+                toast({ title: 'Error', description: 'No se pudo actualizar la talla seleccionada', variant: 'destructive' });
+                return;
+            }
+        }
+
+        // Actualiza el stock total en la tabla products
         const { error: updateError } = await supabase
             .from('products')
             .update({ stock: newStock })
@@ -1004,17 +1085,34 @@ const Admin = () => {
             return;
         }
 
-    // ...existing code...
+        // Actualizar estado local de variantes y producto
+        setProducts(prev => prev.map(p => p.id === prod.id ? { ...p, stock: newStock } : p));
+        if (newVariantStock !== null) {
+            setProductVariantOptions(prev => prev.map(v => v.id_talla === selectedSizeForMovement ? { ...v, stock: newVariantStock as number } : v));
+            // actualizar mapa de variantes por producto para filtros (si aplica)
+            setVariantsByProduct(prev => {
+                const next = { ...prev };
+                const names = (productVariantOptions || [])
+                    .map(v => ({ name: v.nombre_talla, stock: v.id_talla === selectedSizeForMovement ? newVariantStock : v.stock }))
+                    .filter(x => x.stock > 0)
+                    .map(x => x.name);
+                next[prod.id] = names;
+                return next;
+            });
+        }
 
         // Obtener el nombre del usuario actual (ajusta según tu lógica de autenticación)
         const usuario_nombre = userData.find(u => u.auth_id === supabase.auth.getUser()?.data?.user?.id)?.full_name || 'Desconocido';
 
-        // Registrar en historial
+        // Registrar en historial (adjuntamos la talla al nombre del producto si fue seleccionada)
+        const tallaNombre = selectedSizeForMovement ? productVariantOptions.find(v => v.id_talla === selectedSizeForMovement)?.nombre_talla : null;
+        const productNameForHistory = tallaNombre ? `${prod.name} (${tallaNombre})` : prod.name;
+
         const { error: historyError } = await supabase
             .from('inventory_history')
             .insert({
                 product_id: prod.id,
-                product_name: prod.name,
+                product_name: productNameForHistory,
                 tipo: movementType,
                 cantidad: qtyNum,
                 fecha: new Date().toISOString(),
@@ -1025,12 +1123,24 @@ const Admin = () => {
             return;
         }
 
-        toast({ title: 'Inventario actualizado', description: `Nuevo stock: ${newStock}` });
+    // Toast más descriptivo
+    const tallaNombreToast = selectedSizeForMovement ? ` (${productVariantOptions.find(v => v.id_talla === selectedSizeForMovement)?.nombre_talla})` : '';
+    toast({ title: 'Inventario actualizado', description: `${movementType === 'venta' ? 'Venta' : movementType === 'reposicion' ? 'Reposición' : 'Devolución'} registrada: ${prod.name}${tallaNombreToast} — ${qtyNum} unidad${qtyNum === 1 ? '' : 'es'}. Nuevo stock: ${newStock}` });
         if (newStock < prod.stock_minimo) {
             setAlertStock(`¡Stock bajo para ${prod.name}! (${newStock} unidades, mínimo ${prod.stock_minimo})`);
         } else {
             setAlertStock(null);
         }
+    };
+
+    const handleInventoryMovement = async () => {
+        // Para ventas pedimos confirmación
+        if (movementType === 'venta') {
+            setConfirmMovementOpen(true);
+            return;
+        }
+        // Para otros tipos, ejecutar directamente
+        await performInventoryMovement();
     };
 
     // Consulta de movimientos de inventario desde Supabase
@@ -1328,6 +1438,11 @@ const Admin = () => {
     const productsPerPage = 10;
     const totalProductsPages = Math.ceil(filteredProducts.length / productsPerPage);
     const paginatedProducts = filteredProducts.slice((productsPage - 1) * productsPerPage, productsPage * productsPerPage);
+
+    // Deshabilitar Confirmar si la cantidad es inválida o excede el stock de la talla (en ventas)
+    const parsedQty = Number(movementQty);
+    const selectedVariantStock = selectedSizeForMovement ? (productVariantOptions.find(v => v.id_talla === selectedSizeForMovement)?.stock ?? 0) : null;
+    const confirmDisabled = !movementQty || isNaN(parsedQty) || parsedQty < 1 || (movementType === 'venta' && selectedVariantStock !== null && parsedQty > selectedVariantStock);
 
     return (
         <div className="min-h-screen bg-background">
@@ -2118,6 +2233,37 @@ const Admin = () => {
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>
+                                            {/* Selector de talla para movimientos (si el producto tiene variantes) */}
+                                            {productVariantOptions.length > 0 && (
+                                                <div className="space-y-2">
+                                                    <label className="block text-sm font-semibold text-muted-foreground">Talla (stock)</label>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="outline" className="w-full flex justify-between items-center px-2 py-2 text-left">
+                                                                <span className="truncate text-xs sm:text-sm">
+                                                                    {selectedSizeForMovement
+                                                                        ? `${productVariantOptions.find(v => v.id_talla === selectedSizeForMovement)?.nombre_talla} — ${productVariantOptions.find(v => v.id_talla === selectedSizeForMovement)?.stock ?? 0} unidad${(productVariantOptions.find(v => v.id_talla === selectedSizeForMovement)?.stock ?? 0) === 1 ? '' : 'es'}`
+                                                                        : '-- Seleccionar talla --'}
+                                                                </span>
+                                                                <ChevronDown className="ml-2 h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent className="w-full max-w-xs">
+                                                            {productVariantOptions.map(v => (
+                                                                <DropdownMenuItem
+                                                                    key={v.id_talla}
+                                                                    onClick={() => setSelectedSizeForMovement(v.id_talla)}
+                                                                    className={`text-xs sm:text-sm ${movementType === 'venta' && (v.stock ?? 0) <= 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                                    disabled={movementType === 'venta' && (v.stock ?? 0) <= 0}
+                                                                >
+                                                                    <span className="truncate">{v.nombre_talla} — {v.stock ?? 0} unidad{(v.stock ?? 0) === 1 ? '' : 'es'}{movementType === 'venta' && (v.stock ?? 0) <= 0 ? ' (agotado)' : ''}</span>
+                                                                </DropdownMenuItem>
+                                                            ))}
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </div>
+                                            )}
+
                                             <div className="space-y-2">
                                                 <label className="block text-sm font-semibold text-muted-foreground">Tipo de movimiento</label>
                                                 <DropdownMenu>
@@ -2157,14 +2303,45 @@ const Admin = () => {
                                                     }}
                                                 />
                                                 {qtyError && <span className="text-destructive text-xs mt-1 block">{qtyError}</span>}
+                                                {/* Mostrar stock disponible para la talla seleccionada */}
+                                                {selectedSizeForMovement && (
+                                                    <div className="text-xs text-muted-foreground mt-2">Stock talla seleccionada: {productVariantOptions.find(v => v.id_talla === selectedSizeForMovement)?.stock ?? 0} unidad{(productVariantOptions.find(v => v.id_talla === selectedSizeForMovement)?.stock ?? 0) === 1 ? '' : 'es'}</div>
+                                                )}
                                             </div>
                                         </div>
-                                        <Button 
-                                            className="bg-primary text-primary-foreground hover:bg-primary/80 transition w-full sm:w-auto text-sm min-h-[48px] px-6 py-3 touch-manipulation font-medium" 
-                                            onClick={handleInventoryMovement}
-                                        >
-                                            Registrar movimiento
-                                        </Button>
+                                        {/* Dialogo de confirmación para ventas */}
+                                        <AlertDialog open={confirmMovementOpen} onOpenChange={setConfirmMovementOpen}>
+                                            <AlertDialogContent>
+                                                <AlertDialogHeader>
+                                                    <AlertDialogTitle>Confirmar movimiento</AlertDialogTitle>
+                                                    <AlertDialogDescription>
+                                                        ¿Estás seguro de que deseas registrar esta {movementType}?
+                                                        {selectedSizeForMovement ? ` Se aplicará a la talla ${productVariantOptions.find(v => v.id_talla === selectedSizeForMovement)?.nombre_talla}.` : ''}
+                                                    </AlertDialogDescription>
+                                                </AlertDialogHeader>
+                                                <AlertDialogFooter>
+                                                    <AlertDialogCancel onClick={() => setConfirmMovementOpen(false)}>Cancelar</AlertDialogCancel>
+                                                    <AlertDialogAction disabled={confirmDisabled} onClick={async () => { setConfirmMovementOpen(false); await performInventoryMovement(); }}>Confirmar</AlertDialogAction>
+                                                    {confirmDisabled && (
+                                                        <div className="text-xs text-destructive mt-2">La cantidad es inválida o excede el stock de la talla seleccionada.</div>
+                                                    )}
+                                                </AlertDialogFooter>
+                                            </AlertDialogContent>
+                                        </AlertDialog>
+
+                                        <div className="flex flex-col items-start gap-2 w-full sm:w-56">
+                                            <Button
+                                                disabled={confirmDisabled}
+                                                className={`bg-primary text-primary-foreground ${confirmDisabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-primary/80'} transition w-full h-12 text-sm touch-manipulation font-medium flex items-center justify-center`}
+                                                onClick={handleInventoryMovement}
+                                            >
+                                                Registrar movimiento
+                                            </Button>
+                                            {/* Reservar espacio para evitar que el botón salte cuando el mensaje aparece */}
+                                            <div className="text-xs text-destructive min-h-[1.25rem] w-full text-left">
+                                                {confirmDisabled ? 'Corrige la cantidad o selecciona una talla con stock suficiente antes de registrar.' : ''}
+                                            </div>
+                                        </div>
                                     </div>
                                     {alertStock && <div className="mt-4 p-3 bg-destructive/20 text-destructive border border-destructive rounded-lg font-semibold shadow">{alertStock}</div>}
                                     <div className="mt-8">

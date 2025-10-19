@@ -41,7 +41,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsAuthenticated(!!session);
       setUser(session?.user || null);
     } catch (error) {
-      console.error('Error checking user session:', error);
+      console.error('Error verificando la sesión de usuario:', error);
     } finally {
       setLoading(false);
     }

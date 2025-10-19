@@ -203,7 +203,7 @@ export default function Register() {
       });
 
       if (authError) {
-        console.error('Auth error:', authError);
+    console.error('Error de autenticación (Auth):', authError);
         
         if (authError.message?.includes('already registered') || 
             authError.message?.includes('user_exists')) {
@@ -230,7 +230,7 @@ export default function Register() {
       });
 
       if (insertError) {
-  console.error('Insert error details:', insertError);
+  console.error('Detalles de error en insert:', insertError);
   
   // Manejo mejorado de errores de duplicados
   if (insertError.code === '23505') {
@@ -292,7 +292,7 @@ export default function Register() {
       });
 
     } catch (err) {
-      console.error('Registration error:', err);
+  console.error('Error en el registro:', err);
       
       let errorMessage = 'Error al crear la cuenta. Intenta nuevamente.';
       
