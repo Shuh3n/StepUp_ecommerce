@@ -128,10 +128,10 @@ const ProductFilters = ({
           <div className="px-2">
             <Slider
               value={priceRange}
-              onValueChange={(value) => onPriceRangeChange(value as [number, number])}
-              max={maxPrice}
+              onValueChange={onPriceRangeChange}
+              max={1000000} // Cambiar el máximo
               min={0}
-              step={5000}
+              step={50000} // Aumentar el step para mejor usabilidad
               className="w-full"
             />
           </div>
