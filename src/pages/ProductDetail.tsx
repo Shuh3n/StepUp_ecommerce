@@ -9,6 +9,10 @@ import { supabase } from "@/lib/supabase";
 import { addFavorite, removeFavorite, getFavoritesFromEdgeRaw } from "@/lib/api/favorites";
 import { Heart } from "lucide-react";
 
+// Edge Functions URLs
+const EDGE_ADD_TO_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/add-to-cart";
+const EDGE_GET_CART_ITEMS = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-cart-items";
+
 interface Size {
   id_talla: number;
   nombre_talla: string;
@@ -35,6 +39,7 @@ interface Product {
 }
 
 export interface CartItem {
+  cartItemId?: string;
   id: number;
   name: string;
   price: number;
@@ -58,13 +63,11 @@ const ProductDetail = () => {
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
+  // Fetch product and variants data
   useEffect(() => {
     const fetchProduct = async () => {
       setLoading(true);
-      
       try {
-        console.log('Fetching product with ID:', id);
-
         // Get product data
         const { data: productOnly, error: productOnlyError } = await supabase
           .from('products')
@@ -72,12 +75,7 @@ const ProductDetail = () => {
           .eq('id', id)
           .single();
 
-        if (productOnlyError) {
-          console.error('Product fetch error:', productOnlyError);
-          throw productOnlyError;
-        }
-
-        console.log('Product data:', productOnly);
+        if (productOnlyError) throw productOnlyError;
 
         // Get variants data
         const { data: variantsData, error: variantsError } = await supabase
@@ -85,26 +83,16 @@ const ProductDetail = () => {
           .select('*')
           .eq('id_producto', id);
 
-        if (variantsError) {
-          console.error('Variants fetch error:', variantsError);
-          throw variantsError;
-        }
-
-        console.log('Raw variants data:', variantsData);
+        if (variantsError) throw variantsError;
 
         // Get sizes data
         const { data: sizesData, error: sizesError } = await supabase
           .from('sizes')
           .select('*');
 
-        if (sizesError) {
-          console.error('Sizes fetch error:', sizesError);
-          throw sizesError;
-        }
+        if (sizesError) throw sizesError;
 
-        console.log('Sizes data:', sizesData);
-
-        // Manually join the data
+        // Join variants with sizes
         const variantsWithSizes = variantsData?.map(variant => {
           const size = sizesData?.find(s => s.id_talla === variant.id_talla);
           return {
@@ -113,19 +101,11 @@ const ProductDetail = () => {
           };
         }) || [];
 
-        console.log('Variants with sizes (manual join):', variantsWithSizes);
-
-        // Transform the product with variants and size data
-        const transformedProduct = {
+        setProduct({
           ...productOnly,
           variants: variantsWithSizes
-        };
-
-        console.log('Transformed product:', transformedProduct);
-        
-        setProduct(transformedProduct);
+        });
       } catch (error) {
-        console.error('Detailed error:', error);
         const message = error instanceof Error ? error.message : 'No se pudo cargar el producto';
         toast({
           title: 'Error al cargar el producto',
@@ -143,6 +123,7 @@ const ProductDetail = () => {
     }
   }, [id, navigate, toast]);
 
+  // Favoritos
   const refreshFavorite = async () => {
     if (!product) return;
     const favorites = await getFavoritesFromEdgeRaw();
@@ -155,73 +136,49 @@ const ProductDetail = () => {
     }
   }, [product]);
 
-  // Calculate total items for cart badge
+  // Cart badge
   const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  
 
-  // Get available sizes with stock
+  // Tallas con stock
   const getAvailableSizes = (): Array<{name: string; stock: number; variant: ProductVariant}> => {
-    if (!product?.variants) {
-      console.log('No product variants available');
-      return [];
-    }
-
-    const availableSizes = product.variants
-      .filter(variant => {
-        console.log('Checking variant:', variant);
-        console.log('Stock:', variant.stock, 'Type:', typeof variant.stock);
-        console.log('Size:', variant.size);
-        
-        const hasStock = Number(variant.stock) > 0;
-        const hasSize = variant.size && variant.size.nombre_talla;
-        
-        console.log('Has stock:', hasStock, 'Has size:', hasSize);
-        
-        return hasStock && hasSize;
-      })
+    if (!product?.variants) return [];
+    return product.variants
+      .filter(variant => Number(variant.stock) > 0 && variant.size && variant.size.nombre_talla)
       .map(variant => ({
         name: variant.size!.nombre_talla.trim(),
         stock: Number(variant.stock),
         variant
       }));
-
-    console.log('Available sizes:', availableSizes);
-    return availableSizes;
   };
 
-  // Get selected variant by size
+  // Variant por talla
   const getVariantBySize = (sizeName: string): ProductVariant | null => {
     if (!product?.variants) return null;
-    
-    return product.variants.find(variant => 
+    return product.variants.find(variant =>
       variant.size && variant.size.nombre_talla.trim() === sizeName.trim()
     ) || null;
   };
 
-  // Get max stock for selected size
+  // Stock máximo para la talla seleccionada
   const getMaxStock = (): number => {
     if (!selectedSize) return 0;
     const variant = getVariantBySize(selectedSize);
     return variant ? variant.stock : 0;
   };
 
-  // Handle quantity change
+  // Cambiar cantidad
   const handleQuantityChange = (delta: number) => {
     const maxStock = getMaxStock();
     const newQuantity = selectedQuantity + delta;
-    
-    if (newQuantity >= 1 && newQuantity <= maxStock) {
-      setSelectedQuantity(newQuantity);
-    }
+    if (newQuantity >= 1 && newQuantity <= maxStock) setSelectedQuantity(newQuantity);
   };
 
-  // Reset quantity when size changes
   useEffect(() => {
     setSelectedQuantity(1);
   }, [selectedSize]);
 
-  // Handle add to cart with quantity control
-  const handleAddToCart = () => {
+  // AGREGAR AL CARRITO (adaptado como ProductCard)
+  const handleAddToCart = async () => {
     if (!selectedSize) {
       toast({
         title: "Selecciona una talla",
@@ -230,7 +187,6 @@ const ProductDetail = () => {
       });
       return;
     }
-
     const variant = getVariantBySize(selectedSize);
     if (!variant || variant.stock <= 0) {
       toast({
@@ -241,66 +197,80 @@ const ProductDetail = () => {
       return;
     }
 
-    // Check current cart quantity for this item+size combination
-    const existingCartItem = cartItems.find(item => 
-      item.id === product!.id && item.selectedSize === selectedSize
-    );
-    
-    const currentCartQuantity = existingCartItem ? existingCartItem.quantity : 0;
-    const totalQuantity = currentCartQuantity + selectedQuantity;
-
-    if (totalQuantity > variant.stock) {
+    // Validar usuario logueado y token
+    const { data } = await supabase.auth.getSession();
+    const access_token = data?.session?.access_token;
+    if (!access_token) {
       toast({
-        title: "Stock insuficiente",
-        description: `Solo hay ${variant.stock} unidades disponibles. Ya tienes ${currentCartQuantity} en el carrito.`,
-        variant: "destructive",
+        title: "Debes iniciar sesión",
+        description: (
+          <Button
+            variant="outline"
+            className="mt-2 bg-orange-500 text-white hover:bg-orange-600 border-none"
+            onClick={() => window.location.href = "/login"}
+          >Ir a Login</Button>
+        ),
+        duration: 6000,
       });
       return;
     }
 
-    const newItem: CartItem = {
-      id: product!.id,
-      name: product!.name,
-      price: product!.price + (variant.precio_ajuste || 0),
-      image: product!.image_url || '',
-      category: product!.category,
-      quantity: selectedQuantity,
-      selectedSize: selectedSize,
-      variantId: variant.id_variante
-    };
-
-    setCartItems(prev => {
-      if (existingCartItem) {
-        return prev.map(item =>
-          item.id === newItem.id && item.selectedSize === newItem.selectedSize
-            ? { ...item, quantity: item.quantity + selectedQuantity }
-            : item
-        );
+    try {
+      // Agrega al carrito con quantity y variante
+      const response = await fetch(EDGE_ADD_TO_CART, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+        body: JSON.stringify({
+          product_id: product.id,
+          variant_id: variant.id_variante,
+          quantity: selectedQuantity,
+        }),
+      });
+      const raw = await response.text();
+      let result;
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        result = { ok: false, error: raw };
       }
-      return [...prev, newItem];
-    });
-
-    toast({
-      title: "Producto agregado",
-      description: `${selectedQuantity} x ${product!.name} (${selectedSize}) agregado al carrito`,
-    });
-
-    // Reset quantity
+      if (result.ok) {
+        toast({
+          title: "Agregado al carrito",
+          description: `${selectedQuantity} x ${product.name} (${selectedSize}) agregado al carrito`,
+        });
+        // Opcional: recargar lista del carrito desde backend edge
+        // const cartResponse = await fetch(EDGE_GET_CART_ITEMS, { ... });
+        // const cartResult = await cartResponse.json();
+        // setCartItems(cartResult.cart_items || []);
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo agregar al carrito",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo agregar al carrito",
+        variant: "destructive",
+      });
+    }
     setSelectedQuantity(1);
   };
 
-  // Handle cart updates
+  // Cart functions locales (solo frontend)
   const handleUpdateQuantity = (id: number, newQuantity: number, selectedSize?: string) => {
     if (newQuantity <= 0) {
       handleRemoveItem(id, selectedSize);
       return;
     }
-
-    // Find the variant to check stock
-    const variant = product?.variants.find(v => 
+    const variant = product?.variants.find(v =>
       v.size && v.size.nombre_talla.trim() === selectedSize?.trim()
     );
-
     if (variant && newQuantity > variant.stock) {
       toast({
         title: "Stock insuficiente",
@@ -309,7 +279,6 @@ const ProductDetail = () => {
       });
       return;
     }
-
     setCartItems(prev =>
       prev.map(item =>
         item.id === id && item.selectedSize === selectedSize
@@ -328,12 +297,9 @@ const ProductDetail = () => {
   const handleChangeSizeInCart = (id: number, oldSize: string, newSize: string) => {
     const item = cartItems.find(item => item.id === id && item.selectedSize === oldSize);
     if (!item) return;
-
-    // Find the new variant
-    const newVariant = product?.variants.find(v => 
+    const newVariant = product?.variants.find(v =>
       v.size && v.size.nombre_talla.trim() === newSize.trim()
     );
-
     if (!newVariant) {
       toast({
         title: "Error",
@@ -342,16 +308,11 @@ const ProductDetail = () => {
       });
       return;
     }
-
-    // Check if there's already an item with the new size
-    const existingItemWithNewSize = cartItems.find(existingItem => 
+    const existingItemWithNewSize = cartItems.find(existingItem =>
       existingItem.id === id && existingItem.selectedSize === newSize
     );
-
     if (existingItemWithNewSize) {
-      // Merge quantities
       const totalQuantity = existingItemWithNewSize.quantity + item.quantity;
-      
       if (totalQuantity > newVariant.stock) {
         toast({
           title: "Stock insuficiente",
@@ -360,17 +321,15 @@ const ProductDetail = () => {
         });
         return;
       }
-
       setCartItems(prev => prev
         .filter(cartItem => !(cartItem.id === id && cartItem.selectedSize === oldSize))
-        .map(cartItem => 
+        .map(cartItem =>
           cartItem.id === id && cartItem.selectedSize === newSize
             ? { ...cartItem, quantity: totalQuantity }
             : cartItem
         )
       );
     } else {
-      // Check stock for new size
       if (item.quantity > newVariant.stock) {
         toast({
           title: "Stock insuficiente",
@@ -379,13 +338,11 @@ const ProductDetail = () => {
         });
         return;
       }
-
-      // Update the item with new size and price
       setCartItems(prev =>
         prev.map(cartItem =>
           cartItem.id === id && cartItem.selectedSize === oldSize
-            ? { 
-                ...cartItem, 
+            ? {
+                ...cartItem,
                 selectedSize: newSize,
                 price: product!.price + (newVariant.precio_ajuste || 0),
                 variantId: newVariant.id_variante
@@ -394,7 +351,6 @@ const ProductDetail = () => {
         )
       );
     }
-
     toast({
       title: "Talla actualizada",
       description: `Talla cambiada de ${oldSize} a ${newSize}`,
@@ -403,8 +359,6 @@ const ProductDetail = () => {
 
   const handleFavoriteClick = async () => {
     setFavoriteLoading(true);
-
-    // Verifica si el usuario está logueado
     const { data } = await supabase.auth.getSession();
     const access_token = data?.session?.access_token;
     if (!access_token) {
@@ -424,7 +378,6 @@ const ProductDetail = () => {
       setFavoriteLoading(false);
       return;
     }
-
     try {
       if (!isFavorite) {
         const ok = await addFavorite(product.id);
@@ -443,7 +396,7 @@ const ProductDetail = () => {
             title: "Eliminado de favoritos",
             description: `El producto "${product.name}" fue removido de favoritos.`,
           });
-          await refreshFavorite(); // <-- Refresca el estado después de eliminar
+          await refreshFavorite();
         }
       }
     } catch {
@@ -463,7 +416,7 @@ const ProductDetail = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar 
+        <Navbar
           cartItems={totalItems}
           onCartClick={() => setIsCartOpen(true)}
           onContactClick={() => {}}
@@ -483,7 +436,7 @@ const ProductDetail = () => {
   if (!product) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar 
+        <Navbar
           cartItems={totalItems}
           onCartClick={() => setIsCartOpen(true)}
           onContactClick={() => {}}
@@ -506,7 +459,7 @@ const ProductDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar 
+      <Navbar
         cartItems={totalItems}
         onCartClick={() => setIsCartOpen(true)}
         onContactClick={() => {}}
@@ -666,7 +619,6 @@ const ProductDetail = () => {
       <Cart
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
-        items={cartItems}
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
         onChangeSizeInCart={handleChangeSizeInCart}
