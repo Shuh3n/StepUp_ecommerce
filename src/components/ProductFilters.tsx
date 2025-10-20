@@ -1,16 +1,34 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Filter, X } from "lucide-react";
 
+// Nueva función para obtener categorías desde la Edge Function
+async function fetchCategories(): Promise<CategoryOption[]> {
+  try {
+    const res = await fetch("https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-categories");
+    const result = await res.json();
+    if (result.ok && Array.isArray(result.categories)) {
+      // Ahora cada categoría tiene id y name
+      return result.categories.map((cat: { id: string, name: string }) => ({
+        id: cat.id,
+        name: cat.name
+      }));
+    }
+    return [];
+  } catch (e) {
+    return [];
+  }
+}
+
 interface CategoryOption {
   id: string;
   name: string;
 }
 interface ProductFiltersProps {
-  categories: CategoryOption[];
+  categories?: CategoryOption[]; // Ahora puede ser opcional si lo vas a cargar aquí
   selectedCategory: string;
   onCategoryChange: (category: string) => void;
   priceRange: [number, number];
@@ -21,14 +39,12 @@ interface ProductFiltersProps {
   onSizeChange: (sizes: string[]) => void;
   onClearFilters?: () => void;
   maxPrice?: number;
-  // Optional: id of the category that represents "All/Todas" in DB
   allCategoryId?: string;
-  // Optional: size labels to render (from DB)
   sizes?: string[];
 }
 
 const ProductFilters = ({
-  categories,
+  categories: categoriesProp,
   selectedCategory,
   onCategoryChange,
   priceRange,
@@ -38,13 +54,28 @@ const ProductFilters = ({
   selectedSizes,
   onSizeChange,
   onClearFilters,
-  maxPrice = 300000, // Nuevo prop con valor por defecto
+  maxPrice = 300000,
   allCategoryId,
   sizes: sizesProp,
 }: ProductFiltersProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [categories, setCategories] = useState<CategoryOption[]>(categoriesProp || []);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+
   // Prefer DB-provided sizes; fallback to common list
   const sizes = sizesProp && sizesProp.length > 0 ? sizesProp : [ "S", "M", "L", "XL" ];
+
+  useEffect(() => {
+    if (!categoriesProp || categoriesProp.length === 0) {
+      setLoadingCategories(true);
+      fetchCategories().then((cats) => {
+        setCategories(cats);
+        setLoadingCategories(false);
+      });
+    } else {
+      setCategories(categoriesProp);
+    }
+  }, [categoriesProp]);
 
   const handleSizeToggle = (size: string) => {
     const newSizes = selectedSizes.includes(size)
@@ -58,7 +89,6 @@ const ProductFilters = ({
                           priceRange[0] > 0 || 
                           priceRange[1] < maxPrice || 
                           selectedSizes.length > 0;
-  
 
   return (
     <div className="space-y-6">
@@ -113,11 +143,16 @@ const ProductFilters = ({
               <SelectValue placeholder="Seleccionar categoría" />
             </SelectTrigger>
             <SelectContent>
-              {categories.map(cat => (
-                <SelectItem key={cat.id} value={cat.id}>
-                  {cat.name}
-                </SelectItem>
-              ))}
+              <SelectItem value="all">Todas</SelectItem>
+              {loadingCategories ? (
+                <SelectItem value="" disabled>Cargando...</SelectItem>
+              ) : (
+                categories.map(cat => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -129,9 +164,9 @@ const ProductFilters = ({
             <Slider
               value={priceRange}
               onValueChange={onPriceRangeChange}
-              max={1000000} // Cambiar el máximo
               min={0}
-              step={50000} // Aumentar el step para mejor usabilidad
+              max={maxPrice}
+              step={Math.max(1000, Math.round(maxPrice / 20))}
               className="w-full"
             />
           </div>
@@ -139,14 +174,26 @@ const ProductFilters = ({
             <span>${priceRange[0].toLocaleString()}</span>
             <span>${priceRange[1].toLocaleString()}</span>
           </div>
+          <div className="flex justify-end">
+            {(priceRange[0] > 0 || priceRange[1] < maxPrice) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onPriceRangeChange([0, maxPrice])}
+                className="text-xs"
+              >
+                Limpiar rango
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Sizes */}
         <div className="space-y-3">
           <h4 className="font-medium">Tallas</h4>
           <div className="grid grid-cols-3 gap-2">
-            {sizes.map(size => (
-              <div key={size} className="flex items-center space-x-2">
+            {sizes.map((size, idx) => (
+              <div key={size + idx} className="flex items-center space-x-2">
                 <Checkbox
                   id={size}
                   checked={selectedSizes.includes(size)}
@@ -191,3 +238,4 @@ const ProductFilters = ({
 };
 
 export default ProductFilters;
+

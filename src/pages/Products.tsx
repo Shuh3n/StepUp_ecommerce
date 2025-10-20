@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import ProductCard from "@/components/ProductCard";
 import ProductFilters from "@/components/ProductFilters";
@@ -23,13 +23,13 @@ interface ProductVariant {
   size?: Size;
 }
 interface Product {
-  [x: string]: any;
+  category: string;
   id: number;
   name: string;
   description?: string;
   price: number;
   image_url?: string;
-  id_category: string; // uuid
+  id_category: string;
   category_name: string;
   created_at?: string;
   updated_at?: string;
@@ -72,83 +72,70 @@ const Products = () => {
     refreshFavorites();
   }, []);
 
-  // Carga productos de supabase
+  // Carga productos, variantes y tallas en paralelo
   useEffect(() => {
-    const fetchProducts = async () => {
-      setLoadingProducts(true);
-      try {
-        const { data: productsData, error: productsError } = await supabase
-          .from('products')
-          .select('*')
-          .order('id', { ascending: false });
-
-        if (productsError) throw productsError;
-        if (!productsData || productsData.length === 0) {
-          setProducts([]);
-          return;
-        }
-
-        const { data: variantsData } = await supabase
-          .from('products_variants')
-          .select('*');
-        const { data: sizesData, error: sizesError } = await supabase
-          .from('sizes')
-          .select('*');
-        if (sizesError) {
-          // Continuar sin tallas si hay error
-        }
-
-        const transformedProducts = productsData?.map(product => {
-          const productVariants = (variantsData || [])
-            .filter(variant => variant.id_producto === product.id)
-            .map(variant => {
-              const size = sizesData?.find(s => s.id_talla === variant.id_talla);
-              return { ...variant, size };
-            });
-          return { ...product, variants: productVariants };
-        }) || [];
-        setProducts(transformedProducts);
-      } catch (error: any) {
+    setLoadingProducts(true);
+    Promise.all([
+      supabase.from('products').select('*').order('id', { ascending: false }),
+      supabase.from('products_variants').select('*'),
+      supabase.from('sizes').select('*')
+    ]).then(([{ data: productsData, error: productsError }, { data: variantsData }, { data: sizesData }]) => {
+      if (productsError || !productsData) {
+        setProducts([]);
         toast({
           title: 'Error al cargar productos',
-          description: `No se pudieron cargar los productos. ${error.message || 'Error desconocido'}`,
+          description: productsError?.message || 'No se pudieron cargar los productos.',
           variant: 'destructive'
         });
-      } finally {
-        setLoadingProducts(false);
+        return;
       }
-    };
-    fetchProducts();
+      const transformedProducts = productsData.map(product => {
+        const productVariants = (variantsData || [])
+          .filter(variant => variant.id_producto === product.id)
+          .map(variant => ({
+            ...variant,
+            size: (sizesData || []).find(s => s.id_talla === variant.id_talla)
+          }));
+        return { ...product, variants: productVariants };
+      });
+      setProducts(transformedProducts);
+    }).finally(() => setLoadingProducts(false));
   }, [toast]);
 
-  // Categories para filtros
-  const categoriesForFilters = ["all", ...Array.from(new Set(products.map(p => p.category_name || p.category || "Sin categoría")))];
+  // Memoiza categorías y maxPrice
+  const categoriesForFilters = useMemo(
+    () => ["all", ...Array.from(new Set(products.map(p => p.category_name || p.category || "Sin categoría")))],
+    [products]
+  );
+  const maxPrice = useMemo(
+    () => products.reduce((max, p) => Math.max(max, p.price), 0),
+    [products]
+  );
 
-  // Filtrado de productos
-  const filteredProducts = products.filter(product => {
-    const categoryMatch = selectedCategory === "all" || product.category_name === selectedCategory;
-    const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
-    const sizeMatch = selectedSizes.length === 0 ||
-      product.variants?.some(v =>
-        v.size && selectedSizes.includes(v.size.nombre_talla?.trim() || '') && v.stock > 0
-      );
-    return categoryMatch && priceMatch && sizeMatch;
-  });
-
-  // Ordenamiento
-  const sortedProducts = [...filteredProducts].sort((a, b) => {
-    switch (sortBy) {
-      case "price-low":
-        return a.price - b.price;
-      case "price-high":
-        return b.price - a.price;
-      default:
-        return b.id - a.id;
-    }
-  });
-
-  // Calcular precio máximo para filtro
-  const maxPrice = products.reduce((max, p) => Math.max(max, p.price), 0);
+  // Memoiza productos filtrados y ordenados
+  const sortedProducts = useMemo(() => {
+    const filtered = products.filter(product => {
+      const categoryMatch =
+        selectedCategory === "all" ||
+        product.id_category === selectedCategory; // <-- compara id, no name
+      const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
+      const sizeMatch = selectedSizes.length === 0 ||
+        product.variants?.some(v =>
+          v.size && selectedSizes.includes(v.size.nombre_talla?.trim() || '') && v.stock > 0
+        );
+      return categoryMatch && priceMatch && sizeMatch;
+    });
+    return filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "price-low":
+          return a.price - b.price;
+        case "price-high":
+          return b.price - a.price;
+        default:
+          return b.id - a.id;
+      }
+    });
+  }, [products, selectedCategory, priceRange, selectedSizes, sortBy]);
 
   // Handlers de carrito
   const handleAddToCart = (product: Product) => {
@@ -239,7 +226,12 @@ const Products = () => {
             <div className="lg:col-span-1">
               <div className="sticky top-24">
                 <ProductFilters
-                  categories={categoriesForFilters}
+                  categories={categoriesForFilters.map((cat, idx) => ({
+                    id: idx.toString(),
+                    name: cat,
+                    label: cat,
+                    value: cat
+                  }))}
                   selectedCategory={selectedCategory}
                   onCategoryChange={setSelectedCategory}
                   priceRange={priceRange}
@@ -282,7 +274,6 @@ const Products = () => {
                       style={{ animationDelay: `${index * 0.1}s` }}
                     >
                       <ProductCard
-                        key={product.id}
                         id={product.id}
                         name={product.name}
                         price={product.price}

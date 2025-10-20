@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -54,7 +54,7 @@ const Cart = ({
   const [isAnimating, setIsAnimating] = useState(false);
   const [editingSizeFor, setEditingSizeFor] = useState<string | null>(null);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
-  const [items, setItems] = useState<CartItem[]>(itemsProp);
+  const [items, setItems] = useState<CartItem[]>([]);
   const [loadingCheckout, setLoadingCheckout] = useState(false);
   const [loadingClearCart, setLoadingClearCart] = useState(false);
   const { toast } = useToast();
@@ -62,61 +62,64 @@ const Cart = ({
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Fetch cart items from Edge Function when Cart opens
-  useEffect(() => {
-    const fetchCartItems = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const access_token = data?.session?.access_token;
-        if (!access_token) return;
-
-        const response = await fetch(EDGE_GET_CART_ITEMS, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${access_token}`,
-          },
-        });
-        const result = await response.json();
-        if (result.ok && Array.isArray(result.cart_items)) {
-          setItems(
-            result.cart_items.map((item: any) => ({
-              cartItemId: item.cartItemId ?? item.id,
-              id: item.id ?? item.product_id,
-              name: item.name ?? "",
-              price: item.price ?? 0,
-              image: item.image ?? "",
-              category: item.category ?? "",
-              quantity: item.quantity,
-              selectedSize: item.selectedSize ?? "",
-              variantId: item.variantId ?? item.variant_id,
-            }))
-          );
-        } else {
-          setItems([]);
-          if (result.error) {
-            toast({
-              title: "Error",
-              description: result.error,
-              variant: "destructive",
-            });
-          }
-        }
-      } catch (e: any) {
-        toast({
-          title: "Error",
-          description: e?.message || "No se pudo cargar el carrito",
-          variant: "destructive",
-        });
+  // Centraliza la carga del carrito
+  const fetchCartItems = useCallback(async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const access_token = data?.session?.access_token;
+      if (!access_token) {
         setItems([]);
+        return;
       }
-    };
+      const response = await fetch(EDGE_GET_CART_ITEMS, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+      });
+      const result = await response.json();
+      if (result.ok && Array.isArray(result.cart_items)) {
+        setItems(
+          result.cart_items.map((item: any) => ({
+            cartItemId: item.cartItemId ?? item.id,
+            id: item.id ?? item.product_id,
+            name: item.name ?? "",
+            price: item.price ?? 0,
+            image: item.image ?? "",
+            category: item.category ?? "",
+            quantity: item.quantity,
+            selectedSize: item.selectedSize ?? "",
+            variantId: item.variantId ?? item.variant_id,
+          }))
+        );
+      } else {
+        setItems([]);
+        if (result.error) {
+          toast({
+            title: "Error",
+            description: result.error,
+            variant: "destructive",
+          });
+        }
+      }
+    } catch (e: any) {
+      toast({
+        title: "Error",
+        description: e?.message || "No se pudo cargar el carrito",
+        variant: "destructive",
+      });
+      setItems([]);
+    }
+  }, [toast]);
 
+  // Carga el carrito solo cuando el modal se abre
+  useEffect(() => {
     if (isOpen) {
       setIsAnimating(true);
       fetchCartItems();
     }
-  }, [isOpen, toast]);
+  }, [isOpen, fetchCartItems]);
 
   const handleClose = () => {
     setIsAnimating(false);
@@ -156,46 +159,13 @@ const Cart = ({
           title: "Producto actualizado",
           description: `Se aumentó la cantidad de ${item.name} en el carrito.`,
         });
-        setTimeout(() => {
-          setLoadingItemId(null);
-          if (isOpen) {
-            (async () => {
-              const { data } = await supabase.auth.getSession();
-              const access_token = data?.session?.access_token;
-              if (!access_token) return;
-              const response = await fetch(EDGE_GET_CART_ITEMS, {
-                method: "GET",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${access_token}`,
-                },
-              });
-              const result = await response.json();
-              if (result.ok && Array.isArray(result.cart_items)) {
-                setItems(
-                  result.cart_items.map((item: any) => ({
-                    cartItemId: item.cartItemId ?? item.id,
-                    id: item.id ?? item.product_id,
-                    name: item.name ?? "",
-                    price: item.price ?? 0,
-                    image: item.image ?? "",
-                    category: item.category ?? "",
-                    quantity: item.quantity,
-                    selectedSize: item.selectedSize ?? "",
-                    variantId: item.variantId ?? item.variant_id,
-                  }))
-                );
-              }
-            })();
-          }
-        }, 500);
+        await fetchCartItems();
       } else {
         toast({
           title: "Error",
           description: result.error || "No se pudo actualizar el carrito",
           variant: "destructive",
         });
-        setLoadingItemId(null);
       }
     } catch (error: any) {
       toast({
@@ -203,14 +173,15 @@ const Cart = ({
         description: error?.message || "No se pudo actualizar el carrito",
         variant: "destructive",
       });
-      setLoadingItemId(null);
     }
+    setLoadingItemId(null);
   };
 
   // Disminuir cantidad (solo actualiza local, pero podrías agregar edge si lo deseas)
   const handleSubtractQuantity = async (item: CartItem) => {
     if (item.quantity > 1) {
       onUpdateQuantity(item.id, item.quantity - 1, item.selectedSize);
+      await fetchCartItems();
     }
   };
 
@@ -239,46 +210,13 @@ const Cart = ({
           title: "Producto eliminado",
           description: `El producto ${item.name} fue eliminado del carrito.`,
         });
-        setTimeout(() => {
-          setLoadingItemId(null);
-          if (isOpen) {
-            (async () => {
-              const { data } = await supabase.auth.getSession();
-              const access_token = data?.session?.access_token;
-              if (!access_token) return;
-              const response = await fetch(EDGE_GET_CART_ITEMS, {
-                method: "GET",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${access_token}`,
-                },
-              });
-              const result = await response.json();
-              if (result.ok && Array.isArray(result.cart_items)) {
-                setItems(
-                  result.cart_items.map((item: any) => ({
-                    cartItemId: item.cartItemId ?? item.id,
-                    id: item.id ?? item.product_id,
-                    name: item.name ?? "",
-                    price: item.price ?? 0,
-                    image: item.image ?? "",
-                    category: item.category ?? "",
-                    quantity: item.quantity,
-                    selectedSize: item.selectedSize ?? "",
-                    variantId: item.variantId ?? item.variant_id,
-                  }))
-                );
-              }
-            })();
-          }
-        }, 500);
+        await fetchCartItems();
       } else {
         toast({
           title: "Error",
           description: result.error || "No se pudo eliminar del carrito",
           variant: "destructive",
         });
-        setLoadingItemId(null);
       }
     } catch (error: any) {
       toast({
@@ -286,8 +224,8 @@ const Cart = ({
         description: error?.message || "No se pudo eliminar del carrito",
         variant: "destructive",
       });
-      setLoadingItemId(null);
     }
+    setLoadingItemId(null);
   };
 
   // Limpiar todo el carrito
@@ -336,7 +274,6 @@ const Cart = ({
       const { data } = await supabase.auth.getSession();
       const access_token = data?.session?.access_token;
       const user_email = data?.session?.user?.email;
-      const user_id = data?.session?.user?.id;
       if (!user_email || !access_token) throw new Error("Debes iniciar sesión para pagar.");
 
       // 1. Crear la orden en el backend (verificar stock)

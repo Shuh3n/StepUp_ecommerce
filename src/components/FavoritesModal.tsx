@@ -2,7 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Trash2, ShoppingBag, Star } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { removeFavorite } from "@/lib/api/favorites";
 import { supabase } from "@/lib/supabase";
@@ -11,7 +11,7 @@ interface FavoritesModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAddToCart?: (product: any) => void;
-  onFavoritesChange?: () => void; // <-- nueva prop
+  onFavoritesChange?: () => void;
 }
 
 interface FavoriteProduct {
@@ -25,94 +25,87 @@ interface FavoriteProduct {
   isNew?: boolean;
 }
 
-// Cambia esto por tu URL real
 const EDGE_URL = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-favorites";
 
 const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: FavoritesModalProps) => {
   const { toast } = useToast();
-  const [favorites, setFavorites] = useState<FavoriteProduct[]>([]);
+  const [favoritesRaw, setFavoritesRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Llamada directa por fetch
-  const fetchFavorites = async () => {
-    setLoading(true);
-    try {
-      const { data } = await supabase.auth.getSession();
-      const access_token = data?.session?.access_token;
-      if (!access_token) {
-        toast({
-          title: "Debes iniciar sesión",
-          description: (
-            <Button
-              variant="outline"
-              onClick={() => window.location.href = "/login"}
-              className="mt-2"
-            >
-              Ir a Login
-            </Button>
-          ),
-          duration: 6000,
-        });
-        setFavorites([]);
-        setLoading(false);
-        return;
-      }
-
-      const response = await fetch(EDGE_URL, {
-        method: "GET", // o "GET" si tu función lo soporta
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${access_token}`,
-        },
-      });
-      const result = await response.json();
-      console.log("Respuesta cruda fetch:", result);
-
-      // Soporte para distintos formatos de respuesta
-      const favoritesArray = Array.isArray(result.favorites) ? result.favorites : Array.isArray(result) ? result : [];
-
-      const prods = (favoritesArray || [])
-        .filter((fav) => fav.products)
-        .map((fav) => ({
-          id: fav.product_id,
-          name: fav.products?.name,
-          price: Number(fav.products?.price),
-          originalPrice: undefined,
-          image: fav.products?.image_url,
-          category: fav.products?.category || "General",
-          rating: 5,
-          isNew: false,
-        }));
-
-      setFavorites(prods);
-      if (prods.length === 0) {
-        toast({ title: "Sin favoritos", description: "No se encontraron favoritos para este usuario." });
-      }
-    } catch (err) {
-      toast({ title: "Error", description: "Error al cargar favoritos." });
-      console.error("Error en fetchFavorites:", err);
-      setFavorites([]);
-    }
-    setLoading(false);
-  };
-
+  // Cargar favoritos solo si el modal está abierto y el usuario está autenticado
   useEffect(() => {
+    const fetchFavorites = async () => {
+      setLoading(true);
+      try {
+        const { data } = await supabase.auth.getSession();
+        const access_token = data?.session?.access_token;
+        if (!access_token) {
+          toast({
+            title: "Debes iniciar sesión",
+            description: (
+              <Button
+                variant="outline"
+                onClick={() => window.location.href = "/login"}
+                className="mt-2"
+              >
+                Ir a Login
+              </Button>
+            ),
+            duration: 6000,
+          });
+          setFavoritesRaw([]);
+          setLoading(false);
+          return;
+        }
+        const response = await fetch(EDGE_URL, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${access_token}`,
+          },
+        });
+        const result = await response.json();
+        const favoritesArray = Array.isArray(result.favorites) ? result.favorites : Array.isArray(result) ? result : [];
+        setFavoritesRaw(favoritesArray);
+        if (!favoritesArray.length) {
+          toast({ title: "Sin favoritos", description: "No se encontraron favoritos para este usuario." });
+        }
+      } catch {
+        toast({ title: "Error", description: "Error al cargar favoritos." });
+        setFavoritesRaw([]);
+      }
+      setLoading(false);
+    };
     if (isOpen) fetchFavorites();
-  }, [isOpen]);
+  }, [isOpen, toast]);
 
+  // Memoiza el mapeo de favoritos
+  const favorites: FavoriteProduct[] = useMemo(() => (
+    (favoritesRaw || [])
+      .filter((fav) => fav.products)
+      .map((fav) => ({
+        id: fav.product_id,
+        name: fav.products?.name,
+        price: Number(fav.products?.price),
+        originalPrice: undefined,
+        image: fav.products?.image_url,
+        category: fav.products?.category || "General",
+        rating: 5,
+        isNew: false,
+      }))
+  ), [favoritesRaw]);
+
+  // Eliminar favorito
   const handleRemoveFavorite = async (productId: number) => {
     setLoading(true);
     try {
       const ok = await removeFavorite(productId);
       if (ok) {
         toast({ title: "Eliminado de favoritos", description: "El producto ha sido removido de tus favoritos." });
-        await fetchFavorites();
-        if (onFavoritesChange) onFavoritesChange(); // <-- Esto refresca el estado en el padre
+        setFavoritesRaw(prev => prev.filter(fav => fav.product_id !== productId));
+        if (onFavoritesChange) onFavoritesChange();
       } else {
-        toast({
-          title: "Error",
-          description: "No se pudo eliminar de favoritos.",
-        });
+        toast({ title: "Error", description: "No se pudo eliminar de favoritos." });
       }
     } catch {
       toast({ title: "Error", description: "No se pudo eliminar de favoritos." });
@@ -120,6 +113,7 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: Fav
     setLoading(false);
   };
 
+  // Agregar al carrito
   const handleAddToCart = (product: FavoriteProduct) => {
     if (onAddToCart) {
       onAddToCart({
