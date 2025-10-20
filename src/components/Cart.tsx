@@ -10,9 +10,12 @@ import { supabase } from "@/lib/supabase";
 const EDGE_ADD_TO_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/add-to-cart";
 const EDGE_REMOVE_FROM_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/remove-from-cart";
 const EDGE_GET_CART_ITEMS = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-cart-items";
+const EDGE_CREATE_ORDER = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/create-paypal-order";
+const EDGE_CREATE_CHECKOUT = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/create-paypal-session";
+const EDGE_CLEAR_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/clear-cart";
 
 interface CartItem {
-  cartItemId: string; // id único de la fila (uuid de cart_items)
+  cartItemId: string;
   id: number;
   name: string;
   price: number;
@@ -52,6 +55,8 @@ const Cart = ({
   const [editingSizeFor, setEditingSizeFor] = useState<string | null>(null);
   const [loadingItemId, setLoadingItemId] = useState<string | null>(null);
   const [items, setItems] = useState<CartItem[]>(itemsProp);
+  const [loadingCheckout, setLoadingCheckout] = useState(false);
+  const [loadingClearCart, setLoadingClearCart] = useState(false);
   const { toast } = useToast();
 
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -77,7 +82,7 @@ const Cart = ({
           setItems(
             result.cart_items.map((item: any) => ({
               cartItemId: item.cartItemId ?? item.id,
-              id: item.id ?? item.product_id, // Asegura que el id corresponde al producto
+              id: item.id ?? item.product_id,
               name: item.name ?? "",
               price: item.price ?? 0,
               image: item.image ?? "",
@@ -285,6 +290,136 @@ const Cart = ({
     }
   };
 
+  // Limpiar todo el carrito
+  const handleClearCart = async () => {
+    setLoadingClearCart(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const access_token = data?.session?.access_token;
+      if (!access_token) throw new Error("Debes iniciar sesión.");
+
+      const response = await fetch(EDGE_CLEAR_CART, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+      });
+      const result = await response.json();
+      if (result.ok) {
+        toast({
+          title: "Carrito limpiado",
+          description: result.message || "Todos los productos fueron eliminados del carrito.",
+        });
+        setItems([]);
+      } else {
+        toast({
+          title: "Error al limpiar el carrito",
+          description: result.error || "No se pudo limpiar el carrito.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo limpiar el carrito.",
+        variant: "destructive",
+      });
+    }
+    setLoadingClearCart(false);
+  };
+
+  // ----- INTEGRACIÓN PEDIDO + PASARELA DE PAGOS -----
+  const handleCheckout = async () => {
+    setLoadingCheckout(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const access_token = data?.session?.access_token;
+      const user_email = data?.session?.user?.email;
+      const user_id = data?.session?.user?.id;
+      if (!user_email || !access_token) throw new Error("Debes iniciar sesión para pagar.");
+
+      // 1. Crear la orden en el backend (verificar stock)
+      const orderPayload = {
+        items: items.map((item) => ({
+          product_id: item.id,
+          variant_id: item.variantId ?? null,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          image_url: item.image,
+          talla: item.selectedSize ?? null,
+        })),
+        address: null,
+        phone: null,
+        payment_method: "paypal",
+      };
+
+      const orderResponse = await fetch(EDGE_CREATE_ORDER, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+        body: JSON.stringify(orderPayload),
+      });
+
+      const orderResult = await orderResponse.json();
+
+      if (!orderResult.ok) {
+        toast({
+          title: "Stock insuficiente",
+          description: orderResult.error || "Algún producto no tiene stock suficiente.",
+          variant: "destructive",
+        });
+        setLoadingCheckout(false);
+        return;
+      }
+
+      // 2. Si la orden fue creada, inicia el flujo de pago con PayPal
+      const payload = {
+        items: items.map((item) => ({
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+        email: user_email,
+      };
+
+      const response = await fetch(EDGE_CREATE_CHECKOUT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (result.ok && result.url) {
+        toast({
+          title: "Redirigiendo a PayPal...",
+          description: "Serás dirigido a PayPal para completar tu pago.",
+        });
+        window.location.href = result.url;
+      } else {
+        toast({
+          title: "Error en el pago",
+          description: result.error || "No se pudo iniciar el pago.",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo iniciar el pago.",
+        variant: "destructive",
+      });
+    }
+    setLoadingCheckout(false);
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -454,8 +589,22 @@ const Cart = ({
             </div>
 
             <div className="space-y-3">
-              <Button variant="hero" className="w-full" size="lg">
-                Proceder al Pago
+              <Button
+                variant="hero"
+                className="w-full"
+                size="lg"
+                onClick={handleCheckout}
+                disabled={loadingCheckout}
+              >
+                {loadingCheckout ? "Procesando..." : "Proceder al Pago con PayPal"}
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={handleClearCart}
+                disabled={loadingClearCart || items.length === 0}
+              >
+                {loadingClearCart ? "Limpiando..." : "Limpiar Carrito"}
               </Button>
               <Button variant="ghost" className="w-full" onClick={handleClose}>
                 Continuar Comprando
