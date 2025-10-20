@@ -31,6 +31,7 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: Fav
   const { toast } = useToast();
   const [favoritesRaw, setFavoritesRaw] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [categoriesMap, setCategoriesMap] = useState<Record<string, string>>({});
 
   // Cargar favoritos solo si el modal está abierto y el usuario está autenticado
   useEffect(() => {
@@ -79,6 +80,18 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: Fav
     if (isOpen) fetchFavorites();
   }, [isOpen, toast]);
 
+  // Cargar categorías para el mapeo de nombres
+  useEffect(() => {
+    supabase
+      .from('categories')
+      .select('id, name')
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        (data || []).forEach(cat => { map[cat.id] = cat.name; });
+        setCategoriesMap(map);
+      });
+  }, []);
+
   // Memoiza el mapeo de favoritos
   const favorites: FavoriteProduct[] = useMemo(() => (
     (favoritesRaw || [])
@@ -89,11 +102,11 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: Fav
         price: Number(fav.products?.price),
         originalPrice: undefined,
         image: fav.products?.image_url,
-        category: fav.products?.category || "General",
+        category: categoriesMap[fav.products?.category] || "General",
         rating: 5,
         isNew: false,
       }))
-  ), [favoritesRaw]);
+  ), [favoritesRaw, categoriesMap]);
 
   // Eliminar favorito
   const handleRemoveFavorite = async (productId: number) => {

@@ -68,7 +68,11 @@ const ProductDetail = () => {
       setLoading(true);
       try {
         const [productRes, variantsRes, sizesRes] = await Promise.all([
-          supabase.from('products').select('*').eq('id', id).single(),
+          supabase
+            .from('products')
+            .select('*, categories(name)')
+            .eq('id', id)
+            .single(),
           supabase.from('products_variants').select('*').eq('id_producto', id),
           supabase.from('sizes').select('*')
         ]);
@@ -81,8 +85,9 @@ const ProductDetail = () => {
           size: (sizesRes.data || []).find((s: Size) => s.id_talla === variant.id_talla)
         }));
 
+        const categoryName = productRes.data.categories?.name || "Sin categoría";
         if (isMounted) {
-          setProduct({ ...productRes.data, variants: variantsWithSizes });
+          setProduct({ ...productRes.data, category: categoryName, variants: variantsWithSizes });
         }
       } catch (error) {
         toast({

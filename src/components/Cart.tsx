@@ -57,6 +57,7 @@ const Cart = ({
   const [items, setItems] = useState<CartItem[]>([]);
   const [loadingCheckout, setLoadingCheckout] = useState(false);
   const [loadingClearCart, setLoadingClearCart] = useState(false);
+  const [categoriesMap, setCategoriesMap] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -120,6 +121,17 @@ const Cart = ({
       fetchCartItems();
     }
   }, [isOpen, fetchCartItems]);
+
+  useEffect(() => {
+    supabase
+      .from('categories')
+      .select('id, name')
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        (data || []).forEach(cat => { map[cat.id] = cat.name; });
+        setCategoriesMap(map);
+      });
+  }, []);
 
   const handleClose = () => {
     setIsAnimating(false);
@@ -426,7 +438,7 @@ const Cart = ({
                       <h4 className="font-medium text-sm mb-1">{item.name}</h4>
                       <div className="flex gap-2 mb-2">
                         <Badge variant="outline" className="text-xs">
-                          {item.category}
+                          {categoriesMap[item.category] || item.category || "Sin categoría"}
                         </Badge>
                         {item.selectedSize && (
                           <div className="flex items-center gap-1">
