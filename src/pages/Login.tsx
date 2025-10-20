@@ -70,11 +70,10 @@ const Login = () => {
             // Si no es admin, verificar si existe en users
             const { data: userData, error: userError } = await supabase
               .from('users')
-              .select('auth_id')
+              .select('auth_id, estado')
               .eq('auth_id', session.user.id)
               .maybeSingle();
 
-            console.log('[LOGIN] Resultado consulta users:', userData);
             if (userError) {
               console.error('[LOGIN] Error buscando usuario en users:', userError);
               navigate('/complete-profile');
@@ -82,11 +81,28 @@ const Login = () => {
             }
 
             if (userData) {
-              console.log('[LOGIN] Usuario detectado como normal, redirigiendo a /profile');
+              // Si estado es false, bloquea el acceso
+              if (userData.estado !== true) {
+                await supabase.auth.signOut();
+                toast({
+                  title: "Cuenta inhabilitada",
+                  description: "Tu cuenta se encuentra inhabilitada o no tienes perfil. Por favor contacta soporte.",
+                  variant: "destructive",
+                  duration: 8000,
+                });
+                return;
+              }
               navigate('/profile');
             } else {
-              console.log('[LOGIN] Usuario sin perfil, redirigiendo a /complete-profile');
-              navigate('/complete-profile');
+              // Si no existe en users, bloquea también
+              await supabase.auth.signOut();
+              toast({
+                title: "Cuenta inhabilitada",
+                description: "Tu cuenta se encuentra inhabilitada o no tienes perfil. Por favor contacta soporte.",
+                variant: "destructive",
+                duration: 8000,
+              });
+              return;
             }
           } catch (error) {
             console.error('Error manejando cambios de estado de auth:', error);
@@ -253,12 +269,15 @@ const Login = () => {
               </div>
 
               <div className="flex items-center justify-between">
-                <Link
-                  to="/forgot-password"
-                  className="text-sm text-primary hover:underline"
-                >
-                  ¿Olvidaste tu contraseña?
-                </Link>
+                <div className="text-center">
+                  <Button
+                    variant="link"
+                    className="text-sm text-muted-foreground"
+                    onClick={() => navigate("/forgot-password")}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Button>
+                </div>
               </div>
 
               <Button type="submit" variant="hero" className="w-full">

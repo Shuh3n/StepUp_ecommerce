@@ -22,6 +22,7 @@ import Admin from "./pages/Admin";
 import AdminRoute from "./components/AdminRoute";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import PagoExitoso from "./pages/PagoExitoso";
 
 
 const queryClient = new QueryClient();
@@ -56,6 +57,7 @@ const App = () => {
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/auth-callback" element={<AuthCallback />} />
+                <Route path="/pago-exitoso" element={<PagoExitoso />} />
                 
                 {/* Ruta específica para nuevos usuarios de Google */}
                 <Route 

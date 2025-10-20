@@ -2,12 +2,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Trash2, ShoppingBag, Star } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { removeFavorite } from "@/lib/api/favorites";
+import { supabase } from "@/lib/supabase";
 
 interface FavoritesModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddToCart?: (product: FavoriteProduct & { quantity: number }) => void;
+  onAddToCart?: (product: any) => void;
+  onFavoritesChange?: () => void;
 }
 
 interface FavoriteProduct {
@@ -21,23 +25,108 @@ interface FavoriteProduct {
   isNew?: boolean;
 }
 
-const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) => {
-  const [favorites, setFavorites] = useState<FavoriteProduct[]>([]);
+const EDGE_URL = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-favorites";
 
-  // Load favorites from localStorage
+const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: FavoritesModalProps) => {
+  const { toast } = useToast();
+  const [favoritesRaw, setFavoritesRaw] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [categoriesMap, setCategoriesMap] = useState<Record<string, string>>({});
+
+  // Cargar favoritos solo si el modal está abierto y el usuario está autenticado
   useEffect(() => {
-    const savedFavorites = localStorage.getItem('stepup-favorites');
-    if (savedFavorites) {
-      setFavorites(JSON.parse(savedFavorites));
-    }
-  }, [isOpen]);
+    const fetchFavorites = async () => {
+      setLoading(true);
+      try {
+        const { data } = await supabase.auth.getSession();
+        const access_token = data?.session?.access_token;
+        if (!access_token) {
+          toast({
+            title: "Debes iniciar sesión",
+            description: (
+              <Button
+                variant="outline"
+                onClick={() => window.location.href = "/login"}
+                className="mt-2"
+              >
+                Ir a Login
+              </Button>
+            ),
+            duration: 6000,
+          });
+          setFavoritesRaw([]);
+          setLoading(false);
+          return;
+        }
+        const response = await fetch(EDGE_URL, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${access_token}`,
+          },
+        });
+        const result = await response.json();
+        const favoritesArray = Array.isArray(result.favorites) ? result.favorites : Array.isArray(result) ? result : [];
+        setFavoritesRaw(favoritesArray);
+        if (!favoritesArray.length) {
+          toast({ title: "Sin favoritos", description: "No se encontraron favoritos para este usuario." });
+        }
+      } catch {
+        toast({ title: "Error", description: "Error al cargar favoritos." });
+        setFavoritesRaw([]);
+      }
+      setLoading(false);
+    };
+    if (isOpen) fetchFavorites();
+  }, [isOpen, toast]);
 
-  const removeFavorite = (productId: number) => {
-    const updatedFavorites = favorites.filter(fav => fav.id !== productId);
-    setFavorites(updatedFavorites);
-    localStorage.setItem('stepup-favorites', JSON.stringify(updatedFavorites));
+  // Cargar categorías para el mapeo de nombres
+  useEffect(() => {
+    supabase
+      .from('categories')
+      .select('id, name')
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        (data || []).forEach(cat => { map[cat.id] = cat.name; });
+        setCategoriesMap(map);
+      });
+  }, []);
+
+  // Memoiza el mapeo de favoritos
+  const favorites: FavoriteProduct[] = useMemo(() => (
+    (favoritesRaw || [])
+      .filter((fav) => fav.products)
+      .map((fav) => ({
+        id: fav.product_id,
+        name: fav.products?.name,
+        price: Number(fav.products?.price),
+        originalPrice: undefined,
+        image: fav.products?.image_url,
+        category: categoriesMap[fav.products?.category] || "General",
+        rating: 5,
+        isNew: false,
+      }))
+  ), [favoritesRaw, categoriesMap]);
+
+  // Eliminar favorito
+  const handleRemoveFavorite = async (productId: number) => {
+    setLoading(true);
+    try {
+      const ok = await removeFavorite(productId);
+      if (ok) {
+        toast({ title: "Eliminado de favoritos", description: "El producto ha sido removido de tus favoritos." });
+        setFavoritesRaw(prev => prev.filter(fav => fav.product_id !== productId));
+        if (onFavoritesChange) onFavoritesChange();
+      } else {
+        toast({ title: "Error", description: "No se pudo eliminar de favoritos." });
+      }
+    } catch {
+      toast({ title: "Error", description: "No se pudo eliminar de favoritos." });
+    }
+    setLoading(false);
   };
 
+  // Agregar al carrito
   const handleAddToCart = (product: FavoriteProduct) => {
     if (onAddToCart) {
       onAddToCart({
@@ -56,7 +145,10 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto animate-scale-in">
+      <DialogContent aria-describedby="favorites-description" className="max-w-4xl max-h-[80vh] overflow-y-auto animate-scale-in">
+        <span id="favorites-description" className="sr-only">
+          Listado de tus productos favoritos
+        </span>
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold gradient-text flex items-center gap-2 animate-fade-in">
             <Heart className="h-6 w-6 text-red-500 fill-current" />
@@ -64,7 +156,9 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
           </DialogTitle>
         </DialogHeader>
         
-        {favorites.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-12">Cargando favoritos...</div>
+        ) : favorites.length === 0 ? (
           <div className="text-center py-12">
             <Heart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-xl font-semibold mb-2">No tienes favoritos aún</h3>
@@ -118,7 +212,7 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart }: FavoritesModalProps) =
                       variant="ghost"
                       size="icon"
                       className="absolute top-3 right-3 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white"
-                      onClick={() => removeFavorite(product.id)}
+                      onClick={() => handleRemoveFavorite(product.id)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
