@@ -269,12 +269,15 @@ const Login = () => {
               </div>
 
               <div className="flex items-center justify-between">
-                <Link
-                  to="/forgot-password"
-                  className="text-sm text-primary hover:underline"
-                >
-                  ¿Olvidaste tu contraseña?
-                </Link>
+                <div className="text-center">
+                  <Button
+                    variant="link"
+                    className="text-sm text-muted-foreground"
+                    onClick={() => navigate("/forgot-password")}
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </Button>
+                </div>
               </div>
 
               <Button type="submit" variant="hero" className="w-full">
