@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import Navbar from "@/components/Navbar";
 import Cart from "@/components/Cart";
-import { ArrowLeft, Plus, Minus } from "lucide-react";
+import { ArrowLeft, Plus, Minus, Heart } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { addFavorite, removeFavorite, getFavoritesFromEdgeRaw } from "@/lib/api/favorites";
-import { Heart } from "lucide-react";
+
+// Edge Functions URLs
+const EDGE_ADD_TO_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/add-to-cart";
+const EDGE_GET_CART_ITEMS = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-cart-items";
 
 interface Size {
   id_talla: number;
@@ -58,170 +61,100 @@ const ProductDetail = () => {
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
 
+  // Carga producto, variantes y tallas en paralelo
   useEffect(() => {
-    const fetchProduct = async () => {
+    let isMounted = true;
+    const fetchAll = async () => {
       setLoading(true);
-      
       try {
-        console.log('Fetching product with ID:', id);
+        const [productRes, variantsRes, sizesRes] = await Promise.all([
+          supabase
+            .from('products')
+            .select('*, categories(name)')
+            .eq('id', id)
+            .single(),
+          supabase.from('products_variants').select('*').eq('id_producto', id),
+          supabase.from('sizes').select('*')
+        ]);
+        if (productRes.error || !productRes.data) throw productRes.error || new Error("Producto no encontrado");
+        if (variantsRes.error) throw variantsRes.error;
+        if (sizesRes.error) throw sizesRes.error;
 
-        // Get product data
-        const { data: productOnly, error: productOnlyError } = await supabase
-          .from('products')
-          .select('*')
-          .eq('id', id)
-          .single();
+        const variantsWithSizes = (variantsRes.data || []).map(variant => ({
+          ...variant,
+          size: (sizesRes.data || []).find((s: Size) => s.id_talla === variant.id_talla)
+        }));
 
-        if (productOnlyError) {
-          console.error('Product fetch error:', productOnlyError);
-          throw productOnlyError;
+        const categoryName = productRes.data.categories?.name || "Sin categoría";
+        if (isMounted) {
+          setProduct({ ...productRes.data, category: categoryName, variants: variantsWithSizes });
         }
-
-        console.log('Product data:', productOnly);
-
-        // Get variants data
-        const { data: variantsData, error: variantsError } = await supabase
-          .from('products_variants')
-          .select('*')
-          .eq('id_producto', id);
-
-        if (variantsError) {
-          console.error('Variants fetch error:', variantsError);
-          throw variantsError;
-        }
-
-        console.log('Raw variants data:', variantsData);
-
-        // Get sizes data
-        const { data: sizesData, error: sizesError } = await supabase
-          .from('sizes')
-          .select('*');
-
-        if (sizesError) {
-          console.error('Sizes fetch error:', sizesError);
-          throw sizesError;
-        }
-
-        console.log('Sizes data:', sizesData);
-
-        // Manually join the data
-        const variantsWithSizes = variantsData?.map(variant => {
-          const size = sizesData?.find(s => s.id_talla === variant.id_talla);
-          return {
-            ...variant,
-            size: size
-          };
-        }) || [];
-
-        console.log('Variants with sizes (manual join):', variantsWithSizes);
-
-        // Transform the product with variants and size data
-        const transformedProduct = {
-          ...productOnly,
-          variants: variantsWithSizes
-        };
-
-        console.log('Transformed product:', transformedProduct);
-        
-        setProduct(transformedProduct);
       } catch (error) {
-        console.error('Detailed error:', error);
-        const message = error instanceof Error ? error.message : 'No se pudo cargar el producto';
         toast({
           title: 'Error al cargar el producto',
-          description: message,
+          description: error instanceof Error ? error.message : 'No se pudo cargar el producto',
           variant: 'destructive',
         });
         navigate('/productos');
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
-
-    if (id && !isNaN(Number(id))) {
-      fetchProduct();
-    }
+    if (id && !isNaN(Number(id))) fetchAll();
+    return () => { isMounted = false; };
   }, [id, navigate, toast]);
 
-  const refreshFavorite = async () => {
+  // Favoritos
+  const refreshFavorite = useCallback(async () => {
     if (!product) return;
     const favorites = await getFavoritesFromEdgeRaw();
     setIsFavorite(favorites.some((fav: any) => fav.product_id === product.id));
-  };
-
-  useEffect(() => {
-    if (product) {
-      refreshFavorite();
-    }
   }, [product]);
 
-  // Calculate total items for cart badge
-  const totalItems = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  
+  useEffect(() => {
+    if (product) refreshFavorite();
+  }, [product, refreshFavorite]);
 
-  // Get available sizes with stock
-  const getAvailableSizes = (): Array<{name: string; stock: number; variant: ProductVariant}> => {
-    if (!product?.variants) {
-      console.log('No product variants available');
-      return [];
-    }
-
-    const availableSizes = product.variants
-      .filter(variant => {
-        console.log('Checking variant:', variant);
-        console.log('Stock:', variant.stock, 'Type:', typeof variant.stock);
-        console.log('Size:', variant.size);
-        
-        const hasStock = Number(variant.stock) > 0;
-        const hasSize = variant.size && variant.size.nombre_talla;
-        
-        console.log('Has stock:', hasStock, 'Has size:', hasSize);
-        
-        return hasStock && hasSize;
-      })
-      .map(variant => ({
-        name: variant.size!.nombre_talla.trim(),
-        stock: Number(variant.stock),
-        variant
+  // Memo: tallas disponibles y stock máximo
+  const availableSizes = useMemo(() => {
+    if (!product?.variants) return [];
+    return product.variants
+      .filter(v => Number(v.stock) > 0 && v.size && v.size.nombre_talla)
+      .map(v => ({
+        name: v.size!.nombre_talla.trim(),
+        stock: Number(v.stock),
+        variant: v
       }));
+  }, [product]);
 
-    console.log('Available sizes:', availableSizes);
-    return availableSizes;
-  };
+  const maxStock = useMemo(() => {
+    if (!selectedSize || !product?.variants) return 0;
+    const variant = product.variants.find(
+      v => v.size && v.size.nombre_talla.trim() === selectedSize.trim()
+    );
+    return variant ? Number(variant.stock) : 0;
+  }, [selectedSize, product]);
 
-  // Get selected variant by size
-  const getVariantBySize = (sizeName: string): ProductVariant | null => {
+  // Variant por talla
+  const getVariantBySize = useCallback((sizeName: string): ProductVariant | null => {
     if (!product?.variants) return null;
-    
-    return product.variants.find(variant => 
-      variant.size && variant.size.nombre_talla.trim() === sizeName.trim()
+    return product.variants.find(
+      v => v.size && v.size.nombre_talla.trim() === sizeName.trim()
     ) || null;
-  };
+  }, [product]);
 
-  // Get max stock for selected size
-  const getMaxStock = (): number => {
-    if (!selectedSize) return 0;
-    const variant = getVariantBySize(selectedSize);
-    return variant ? variant.stock : 0;
-  };
-
-  // Handle quantity change
+  // Cambiar cantidad
   const handleQuantityChange = (delta: number) => {
-    const maxStock = getMaxStock();
     const newQuantity = selectedQuantity + delta;
-    
-    if (newQuantity >= 1 && newQuantity <= maxStock) {
-      setSelectedQuantity(newQuantity);
-    }
+    if (newQuantity >= 1 && newQuantity <= maxStock) setSelectedQuantity(newQuantity);
   };
 
-  // Reset quantity when size changes
   useEffect(() => {
     setSelectedQuantity(1);
   }, [selectedSize]);
 
-  // Handle add to cart with quantity control
-  const handleAddToCart = () => {
+  // AGREGAR AL CARRITO
+  const handleAddToCart = async () => {
     if (!selectedSize) {
       toast({
         title: "Selecciona una talla",
@@ -230,7 +163,6 @@ const ProductDetail = () => {
       });
       return;
     }
-
     const variant = getVariantBySize(selectedSize);
     if (!variant || variant.stock <= 0) {
       toast({
@@ -240,171 +172,61 @@ const ProductDetail = () => {
       });
       return;
     }
-
-    // Check current cart quantity for this item+size combination
-    const existingCartItem = cartItems.find(item => 
-      item.id === product!.id && item.selectedSize === selectedSize
-    );
-    
-    const currentCartQuantity = existingCartItem ? existingCartItem.quantity : 0;
-    const totalQuantity = currentCartQuantity + selectedQuantity;
-
-    if (totalQuantity > variant.stock) {
+    const { data } = await supabase.auth.getSession();
+    const access_token = data?.session?.access_token;
+    if (!access_token) {
       toast({
-        title: "Stock insuficiente",
-        description: `Solo hay ${variant.stock} unidades disponibles. Ya tienes ${currentCartQuantity} en el carrito.`,
-        variant: "destructive",
+        title: "Debes iniciar sesión",
+        description: (
+          <Button
+            variant="outline"
+            className="mt-2 bg-orange-500 text-white hover:bg-orange-600 border-none"
+            onClick={() => window.location.href = "/login"}
+          >Ir a Login</Button>
+        ),
+        duration: 6000,
       });
       return;
     }
-
-    const newItem: CartItem = {
-      id: product!.id,
-      name: product!.name,
-      price: product!.price + (variant.precio_ajuste || 0),
-      image: product!.image_url || '',
-      category: product!.category,
-      quantity: selectedQuantity,
-      selectedSize: selectedSize,
-      variantId: variant.id_variante
-    };
-
-    setCartItems(prev => {
-      if (existingCartItem) {
-        return prev.map(item =>
-          item.id === newItem.id && item.selectedSize === newItem.selectedSize
-            ? { ...item, quantity: item.quantity + selectedQuantity }
-            : item
-        );
+    try {
+      const response = await fetch(EDGE_ADD_TO_CART, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+        body: JSON.stringify({
+          product_id: product.id,
+          variant_id: variant.id_variante,
+          quantity: selectedQuantity,
+        }),
+      });
+      const result = await response.json();
+      if (result.ok) {
+        toast({
+          title: "Agregado al carrito",
+          description: `${selectedQuantity} x ${product.name} (${selectedSize}) agregado al carrito`,
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo agregar al carrito",
+          variant: "destructive",
+        });
       }
-      return [...prev, newItem];
-    });
-
-    toast({
-      title: "Producto agregado",
-      description: `${selectedQuantity} x ${product!.name} (${selectedSize}) agregado al carrito`,
-    });
-
-    // Reset quantity
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo agregar al carrito",
+        variant: "destructive",
+      });
+    }
     setSelectedQuantity(1);
   };
 
-  // Handle cart updates
-  const handleUpdateQuantity = (id: number, newQuantity: number, selectedSize?: string) => {
-    if (newQuantity <= 0) {
-      handleRemoveItem(id, selectedSize);
-      return;
-    }
-
-    // Find the variant to check stock
-    const variant = product?.variants.find(v => 
-      v.size && v.size.nombre_talla.trim() === selectedSize?.trim()
-    );
-
-    if (variant && newQuantity > variant.stock) {
-      toast({
-        title: "Stock insuficiente",
-        description: `Solo hay ${variant.stock} unidades disponibles`,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setCartItems(prev =>
-      prev.map(item =>
-        item.id === id && item.selectedSize === selectedSize
-          ? { ...item, quantity: newQuantity }
-          : item
-      )
-    );
-  };
-
-  const handleRemoveItem = (id: number, selectedSize?: string) => {
-    setCartItems(prev =>
-      prev.filter(item => !(item.id === id && item.selectedSize === selectedSize))
-    );
-  };
-
-  const handleChangeSizeInCart = (id: number, oldSize: string, newSize: string) => {
-    const item = cartItems.find(item => item.id === id && item.selectedSize === oldSize);
-    if (!item) return;
-
-    // Find the new variant
-    const newVariant = product?.variants.find(v => 
-      v.size && v.size.nombre_talla.trim() === newSize.trim()
-    );
-
-    if (!newVariant) {
-      toast({
-        title: "Error",
-        description: "Talla no disponible",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Check if there's already an item with the new size
-    const existingItemWithNewSize = cartItems.find(existingItem => 
-      existingItem.id === id && existingItem.selectedSize === newSize
-    );
-
-    if (existingItemWithNewSize) {
-      // Merge quantities
-      const totalQuantity = existingItemWithNewSize.quantity + item.quantity;
-      
-      if (totalQuantity > newVariant.stock) {
-        toast({
-          title: "Stock insuficiente",
-          description: `Solo hay ${newVariant.stock} unidades disponibles en talla ${newSize}`,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      setCartItems(prev => prev
-        .filter(cartItem => !(cartItem.id === id && cartItem.selectedSize === oldSize))
-        .map(cartItem => 
-          cartItem.id === id && cartItem.selectedSize === newSize
-            ? { ...cartItem, quantity: totalQuantity }
-            : cartItem
-        )
-      );
-    } else {
-      // Check stock for new size
-      if (item.quantity > newVariant.stock) {
-        toast({
-          title: "Stock insuficiente",
-          description: `Solo hay ${newVariant.stock} unidades disponibles en talla ${newSize}`,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Update the item with new size and price
-      setCartItems(prev =>
-        prev.map(cartItem =>
-          cartItem.id === id && cartItem.selectedSize === oldSize
-            ? { 
-                ...cartItem, 
-                selectedSize: newSize,
-                price: product!.price + (newVariant.precio_ajuste || 0),
-                variantId: newVariant.id_variante
-              }
-            : cartItem
-        )
-      );
-    }
-
-    toast({
-      title: "Talla actualizada",
-      description: `Talla cambiada de ${oldSize} a ${newSize}`,
-    });
-  };
-
+  // Favoritos
   const handleFavoriteClick = async () => {
     setFavoriteLoading(true);
-
-    // Verifica si el usuario está logueado
     const { data } = await supabase.auth.getSession();
     const access_token = data?.session?.access_token;
     if (!access_token) {
@@ -424,26 +246,25 @@ const ProductDetail = () => {
       setFavoriteLoading(false);
       return;
     }
-
     try {
       if (!isFavorite) {
-        const ok = await addFavorite(product.id);
+        const ok = await addFavorite(product!.id);
         if (ok) {
           setIsFavorite(true);
           toast({
             title: "Agregado a favoritos",
-            description: `El producto "${product.name}" se agregó a tus favoritos.`,
+            description: `El producto "${product!.name}" se agregó a tus favoritos.`,
           });
         }
       } else {
-        const ok = await removeFavorite(product.id);
+        const ok = await removeFavorite(product!.id);
         if (ok) {
           setIsFavorite(false);
           toast({
             title: "Eliminado de favoritos",
-            description: `El producto "${product.name}" fue removido de favoritos.`,
+            description: `El producto "${product!.name}" fue removido de favoritos.`,
           });
-          await refreshFavorite(); // <-- Refresca el estado después de eliminar
+          await refreshFavorite();
         }
       }
     } catch {
@@ -456,14 +277,15 @@ const ProductDetail = () => {
     setFavoriteLoading(false);
   };
 
-  const availableSizes = getAvailableSizes();
-  const hasStock = availableSizes.length > 0;
-  const maxStock = getMaxStock();
+  const totalItems = useMemo(
+    () => cartItems.reduce((sum, item) => sum + item.quantity, 0),
+    [cartItems]
+  );
 
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar 
+        <Navbar
           cartItems={totalItems}
           onCartClick={() => setIsCartOpen(true)}
           onContactClick={() => {}}
@@ -483,7 +305,7 @@ const ProductDetail = () => {
   if (!product) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar 
+        <Navbar
           cartItems={totalItems}
           onCartClick={() => setIsCartOpen(true)}
           onContactClick={() => {}}
@@ -506,14 +328,13 @@ const ProductDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar 
+      <Navbar
         cartItems={totalItems}
         onCartClick={() => setIsCartOpen(true)}
         onContactClick={() => {}}
         onFavoritesClick={() => {}}
       />
 
-      {/* Contenedor principal responsive */}
       <div className="flex justify-center pt-20 px-4 sm:px-6 lg:px-8 pb-8">
         <div className="w-full max-w-4xl lg:w-[70%] glass rounded-xl border border-white/20 p-4 sm:p-6 lg:p-8">
           <main>
@@ -578,7 +399,7 @@ const ProductDetail = () => {
                     )}
                   </div>
 
-                  {hasStock ? (
+                  {availableSizes.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                       {availableSizes.map((sizeInfo) => (
                         <button
@@ -621,11 +442,9 @@ const ProductDetail = () => {
                       >
                         <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
-                      
                       <span className="text-lg sm:text-xl font-semibold w-8 sm:w-12 text-center text-white">
                         {selectedQuantity}
                       </span>
-                      
                       <Button
                         variant="outline"
                         size="icon"
@@ -635,7 +454,6 @@ const ProductDetail = () => {
                       >
                         <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
                       </Button>
-                      
                       <span className="text-xs sm:text-sm text-white/70">
                         de {maxStock} disponibles
                       </span>
@@ -646,13 +464,13 @@ const ProductDetail = () => {
                 {/* Add to Cart Button */}
                 <Button
                   onClick={handleAddToCart}
-                  disabled={!hasStock || !selectedSize}
+                  disabled={availableSizes.length === 0 || !selectedSize}
                   className="w-full text-sm sm:text-base"
                   size="lg"
                 >
-                  {!hasStock 
+                  {availableSizes.length === 0
                     ? 'Producto Agotado'
-                    : !selectedSize 
+                    : !selectedSize
                     ? 'Selecciona una talla'
                     : `Agregar ${selectedQuantity} al Carrito`
                   }
@@ -665,12 +483,11 @@ const ProductDetail = () => {
 
       <Cart
         isOpen={isCartOpen}
-        onClose={() => setIsCartOpen(false)}
-        items={cartItems}
-        onUpdateQuantity={handleUpdateQuantity}
-        onRemoveItem={handleRemoveItem}
-        onChangeSizeInCart={handleChangeSizeInCart}
-        availableSizes={availableSizes}
+        onClose={() => setIsCartOpen(false)} onUpdateQuantity={function (id: number, quantity: number, selectedSize?: string): void {
+          throw new Error('Function not implemented.');
+        } } onRemoveItem={function (id: number, selectedSize?: string): void {
+          throw new Error('Function not implemented.');
+        } }        // Puedes pasar handlers si los necesitas
       />
     </div>
   );

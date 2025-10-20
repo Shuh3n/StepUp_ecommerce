@@ -1,10 +1,14 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Heart, Trash2 } from "lucide-react";
+import { Heart, Trash2, ShoppingBag } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { addFavorite, removeFavorite } from "@/lib/api/favorites";
 import { supabase } from "@/lib/supabase";
+
+// Edge Function URLs
+const EDGE_ADD_TO_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/add-to-cart";
+const EDGE_REMOVE_FROM_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/remove-from-cart";
 
 interface ProductVariant {
   id_variante: number;
@@ -28,7 +32,7 @@ interface ProductCardProps {
   description?: string;
   created_at?: string;
   variants?: ProductVariant[];
-  onAddToCart: () => void;
+  onAddToCart?: () => void;
   onClick: () => void;
   isFavorite: boolean;
   onFavoriteChange?: (productId: number, newValue: boolean) => void;
@@ -50,7 +54,10 @@ const ProductCard = ({
 }: ProductCardProps) => {
   const { toast } = useToast();
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [cartLoading, setCartLoading] = useState(false);
   const [localIsFavorite, setLocalIsFavorite] = useState(isFavorite);
+  const [showSizeSelector, setShowSizeSelector] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
 
   useEffect(() => {
     setLocalIsFavorite(isFavorite);
@@ -79,23 +86,26 @@ const ProductCard = ({
 
   const buttonProps = getButtonProps();
 
+  // Selección simple: si solo hay una variante, se toma esa
+  const selectedVariantId = variants.length === 1 ? variants[0] : null;
+  const variant_id = selectedVariantId?.id_variante ?? null;
+
+  // AGREGAR AL CARRITO - EDGE FUNCTION
   const handleButtonClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!hasVariants || !hasStock) {
       onClick();
-    } else {
-      onAddToCart();
+      return;
     }
+    setShowSizeSelector(true); // Mostrar el selector/modal de tallas
   };
 
+  // FAVORITOS
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setFavoriteLoading(true);
-
-    // Verifica si el usuario está logueado
-    const { data } = await supabase.auth.getSession();
-    const access_token = data?.session?.access_token;
-    if (!access_token) {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !sessionData?.session?.access_token) {
       toast({
         title: "Para agregar a favoritos debes iniciar sesión",
         description: (
@@ -112,7 +122,6 @@ const ProductCard = ({
       setFavoriteLoading(false);
       return;
     }
-
     try {
       let ok = false;
       if (!localIsFavorite) {
@@ -128,7 +137,7 @@ const ProductCard = ({
               </span>
             ),
           });
-          if (onFavoriteChange) onFavoriteChange(id, true); // Al agregar
+          if (onFavoriteChange) onFavoriteChange(id, true);
         } else {
           toast({
             title: "Error",
@@ -148,7 +157,7 @@ const ProductCard = ({
               </span>
             ),
           });
-          if (onFavoriteChange) onFavoriteChange(id, false); // Al eliminar
+          if (onFavoriteChange) onFavoriteChange(id, false);
         } else {
           toast({
             title: "Error",
@@ -163,6 +172,78 @@ const ProductCard = ({
       });
     }
     setFavoriteLoading(false);
+  };
+
+  const handleAddToCartWithVariant = async (variant: ProductVariant | null) => {
+    if (!variant) return;
+    setCartLoading(true);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData?.session?.access_token) {
+        toast({
+          title: "Debes iniciar sesión",
+          description: (
+            <Button
+              variant="outline"
+              className="mt-2 bg-orange-500 text-white hover:bg-orange-600 border-none"
+              onClick={() => window.location.href = "/login"}
+            >Ir a Login</Button>
+          ),
+          duration: 6000,
+        });
+        setCartLoading(false);
+        return;
+      }
+      const access_token = sessionData.session.access_token;
+
+      const response = await fetch(EDGE_ADD_TO_CART, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${access_token}`,
+        },
+        body: JSON.stringify({
+          product_id: id,
+          variant_id: variant.id_variante,
+          quantity: 1,
+        }),
+      });
+
+      const raw = await response.text();
+      let result;
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        result = { ok: false, error: raw };
+      }
+
+      if (response.status === 401 || result.code === 401) {
+        toast({
+          title: "No autorizado",
+          description: "Debes iniciar sesión para agregar productos al carrito.",
+          variant: "destructive"
+        });
+      } else if (result.ok) {
+        toast({
+          title: "Agregado al carrito",
+          description: `El producto "${name}" talla "${variant.size?.nombre_talla}" se agregó al carrito.`,
+        });
+        if (onAddToCart) onAddToCart();
+      } else {
+        toast({
+          title: "Error",
+          description: result.error || "No se pudo agregar al carrito",
+          variant: "destructive"
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error?.message || "No se pudo agregar al carrito",
+        variant: "destructive"
+      });
+    }
+    setCartLoading(false);
   };
 
   return (
@@ -253,14 +334,61 @@ const ProductCard = ({
         </div>
         <Button
           onClick={handleButtonClick}
-          disabled={buttonProps.disabled}
+          disabled={buttonProps.disabled || cartLoading}
           variant={buttonProps.variant}
-          className="w-full mt-auto"
+          className="w-full mt-auto flex items-center justify-center"
           size="sm"
         >
-          {buttonProps.text}
+          <ShoppingBag className="h-4 w-4 mr-2" />
+          {cartLoading ? "Agregando..." : buttonProps.text}
         </Button>
       </div>
+
+      {/* Selector de talla - Modal */}
+      {showSizeSelector && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 shadow-lg min-w-[300px]">
+            <h3 className="font-bold mb-4">Selecciona una talla</h3>
+            <div className="flex flex-col gap-2">
+              {variants.filter(v => v.stock > 0).map(variant => (
+                <Button
+                  key={variant.id_variante}
+                  variant={selectedVariant?.id_variante === variant.id_variante ? "default" : "outline"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedVariant(variant);
+                  }}
+                  className="w-full"
+                >
+                  {variant.size?.nombre_talla || `Talla ${variant.id_talla}`}
+                </Button>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-6">
+              <Button
+                disabled={!selectedVariant}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  setShowSizeSelector(false);
+                  await handleAddToCartWithVariant(selectedVariant);
+                }}
+                className="bg-orange-500 text-white hover:bg-orange-600"
+              >
+                Agregar al carrito
+              </Button>
+              <Button
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowSizeSelector(false);
+                }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
