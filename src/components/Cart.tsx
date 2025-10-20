@@ -60,7 +60,13 @@ const Cart = ({
   const [categoriesMap, setCategoriesMap] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const SHIPPING_THRESHOLD = 100000;
+  const SHIPPING_COST = 15000;
+
+  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const shipping = subtotal < SHIPPING_THRESHOLD && subtotal > 0 ? SHIPPING_COST : 0;
+  const total = subtotal + shipping;
+
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   // Centraliza la carga del carrito
@@ -192,8 +198,50 @@ const Cart = ({
   // Disminuir cantidad (solo actualiza local, pero podrías agregar edge si lo deseas)
   const handleSubtractQuantity = async (item: CartItem) => {
     if (item.quantity > 1) {
-      onUpdateQuantity(item.id, item.quantity - 1, item.selectedSize);
-      await fetchCartItems();
+      setLoadingItemId(item.cartItemId);
+      try {
+        const { data } = await supabase.auth.getSession();
+        const access_token = data?.session?.access_token;
+        if (!access_token) throw new Error("Debes iniciar sesión.");
+
+        const response = await fetch(EDGE_REMOVE_FROM_CART, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${access_token}`,
+          },
+          body: JSON.stringify({
+            product_id: item.id,
+            variant_id: item.variantId || null, // <-- Asegura que sea null si no existe
+            quantity: 1
+          }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.ok) {
+          toast({
+            title: "Producto actualizado",
+            description: `Se disminuyó la cantidad de ${item.name} en el carrito.`,
+          });
+          await fetchCartItems();
+        } else {
+          console.error("Error al restar cantidad:", result); // <-- Para debug
+          toast({
+            title: "Error",
+            description: result.error || "No se pudo actualizar el carrito",
+            variant: "destructive",
+          });
+        }
+      } catch (error: any) {
+        console.error("Error en handleSubtractQuantity:", error); // <-- Para debug
+        toast({
+          title: "Error",
+          description: error?.message || "No se pudo actualizar el carrito",
+          variant: "destructive",
+        });
+      }
+      setLoadingItemId(null);
     }
   };
 
@@ -289,20 +337,32 @@ const Cart = ({
       if (!user_email || !access_token) throw new Error("Debes iniciar sesión para pagar.");
 
       // 1. Crear la orden en el backend (verificar stock)
-      const orderPayload = {
-        items: items.map((item) => ({
-          product_id: item.id,
-          variant_id: item.variantId ?? null,
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-          image_url: item.image,
-          talla: item.selectedSize ?? null,
-        })),
-        address: null,
-        phone: null,
-        payment_method: "paypal",
-      };
+     // ... dentro de handleCheckout()
+    const orderPayload = {
+      items: items.map((item) => ({
+        product_id: item.id,
+        variant_id: item.variantId ?? null,
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+        image_url: item.image,
+        talla: item.selectedSize ?? null,
+      })),
+      address: null,
+      phone: null,
+      payment_method: "paypal",
+      shipping, // <--- agrega este campo
+    };
+
+const payload = {
+  items: items.map((item) => ({
+    name: item.name,
+    price: item.price,
+    quantity: item.quantity,
+  })),
+  email: user_email,
+  shipping, // <--- agrega este campo aquí también
+};
 
       const orderResponse = await fetch(EDGE_CREATE_ORDER, {
         method: "POST",
@@ -324,16 +384,6 @@ const Cart = ({
         setLoadingCheckout(false);
         return;
       }
-
-      // 2. Si la orden fue creada, inicia el flujo de pago con PayPal
-      const payload = {
-        items: items.map((item) => ({
-          name: item.name,
-          price: item.price,
-          quantity: item.quantity,
-        })),
-        email: user_email,
-      };
 
       const response = await fetch(EDGE_CREATE_CHECKOUT, {
         method: "POST",
@@ -533,9 +583,21 @@ const Cart = ({
         {items.length > 0 && (
           <div className="border-t border-white/20 p-6 space-y-4">
             <div className="flex justify-between items-center">
-              <span className="text-lg font-medium">Total:</span>
+              <span className="text-lg font-medium">Subtotal:</span>
               <span className="text-2xl font-bold gradient-text">
-                ${total.toLocaleString()}
+                ${subtotal.toLocaleString("es-CO")}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-lg font-medium">Envío:</span>
+              <span className="text-2xl font-bold gradient-text">
+                {shipping > 0 ? `$${shipping.toLocaleString("es-CO")}` : "Gratis"}
+              </span>
+            </div>
+            <div className="flex justify-between items-center font-bold">
+              <span className="text-lg">Total:</span>
+              <span className="text-2xl gradient-text">
+                ${total.toLocaleString("es-CO")}
               </span>
             </div>
 
