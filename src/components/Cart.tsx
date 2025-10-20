@@ -367,6 +367,8 @@ const Cart = ({
       });
     }
     setLoadingCheckout(false);
+    setLoadingClearCart(true);
+
   };
 
   if (!isOpen) return null;
