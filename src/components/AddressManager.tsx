@@ -18,7 +18,8 @@ import {
   Loader,
   Home,
   Building2,
-  Users
+  Users,
+  AlertTriangle
 } from 'lucide-react';
 
 // Datos de departamentos y ciudades de Colombia
@@ -94,6 +95,10 @@ const AddressManager: React.FC<AddressManagerProps> = ({
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAddress, setEditingAddress] = useState<Address | null>(null);
+  
+  // Estados para confirmación de eliminación
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [addressToDelete, setAddressToDelete] = useState<Address | null>(null);
   
   // Estados de carga para acciones específicas
   const [actionLoading, setActionLoading] = useState({
@@ -332,9 +337,17 @@ const AddressManager: React.FC<AddressManagerProps> = ({
     setShowAddModal(true);
   };
 
-  // Función para eliminar dirección
-  const handleDeleteAddress = async (addressId: string) => {
-    setActionLoading(prev => ({ ...prev, delete: addressId }));
+  // Función para abrir modal de confirmación de eliminación
+  const handleDeleteClick = (address: Address) => {
+    setAddressToDelete(address);
+    setShowDeleteModal(true);
+  };
+
+  // Función para eliminar dirección después de confirmación
+  const handleConfirmDelete = async () => {
+    if (!addressToDelete) return;
+
+    setActionLoading(prev => ({ ...prev, delete: addressToDelete.id }));
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -347,7 +360,7 @@ const AddressManager: React.FC<AddressManagerProps> = ({
       const { error } = await supabase
         .from('user_addresses')
         .delete()
-        .eq('id', addressId)
+        .eq('id', addressToDelete.id)
         .eq('user_id', user.id);
 
       if (error) throw error;
@@ -370,6 +383,8 @@ const AddressManager: React.FC<AddressManagerProps> = ({
       });
     } finally {
       setActionLoading(prev => ({ ...prev, delete: '' }));
+      setShowDeleteModal(false);
+      setAddressToDelete(null);
     }
   };
 
@@ -626,7 +641,7 @@ const AddressManager: React.FC<AddressManagerProps> = ({
                               size="icon"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDeleteAddress(address.id);
+                                handleDeleteClick(address);
                               }}
                               className="text-red-400 hover:bg-red-500/10 w-full sm:w-auto"
                               title="Eliminar"
@@ -752,15 +767,6 @@ const AddressManager: React.FC<AddressManagerProps> = ({
             <div className="space-y-2">
               <Label className="text-white font-medium text-sm">Tipo de dirección</Label>
               <div className="grid grid-cols-3 gap-2">
-                {/*
-                  { value: 'home', label: 'Casa', icon: Home },
-                  { value: 'work', label: 'Trabajo', icon: Building2 },
-                  { value: 'parents', label: 'Padres', icon: Users },
-                  { value: 'friend', label: 'Amigo/a', icon: Users },
-                  { value: 'office', label: 'Oficina', icon: Building2 },
-                  { value: 'warehouse', label: 'Bodega', icon: Building2 },
-                  { value: 'other', label: 'Otra', icon: MapPin }
-                */}
                 {Object.entries({
                   home: { label: 'Casa', icon: Home },
                   work: { label: 'Trabajo', icon: Building2 },
@@ -834,6 +840,82 @@ const AddressManager: React.FC<AddressManagerProps> = ({
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de confirmación para eliminar */}
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent 
+          className="max-w-md bg-card/95 backdrop-blur-md border border-red-500/20"
+          style={{ zIndex: 10004 }}
+        >
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-400">
+              <AlertTriangle className="h-5 w-5" />
+              Confirmar eliminación
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 mt-4">
+            <p className="text-white/80 text-sm">
+              ¿Estás seguro de que deseas eliminar esta dirección?
+            </p>
+            
+            {/* Vista previa de la dirección a eliminar */}
+            {addressToDelete && (
+              <div className="p-3 bg-red-500/10 rounded-lg border border-red-500/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant="outline" className="text-xs border-red-400/50">
+                    {getAddressTypeIcon(addressToDelete.address_type)}
+                    <span className="ml-1">{getAddressTypeText(addressToDelete.address_type)}</span>
+                  </Badge>
+                  {addressToDelete.is_default && (
+                    <Badge variant="outline" className="text-xs text-green-400 border-green-400/50">
+                      Principal
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-white font-medium text-sm">{addressToDelete.address_line_1}</p>
+                <p className="text-white/70 text-xs">{addressToDelete.city}, {addressToDelete.state}</p>
+              </div>
+            )}
+            
+            <p className="text-red-400 text-xs font-medium">
+              ⚠️ Esta acción no se puede deshacer.
+            </p>
+          </div>
+          
+          <div className="flex gap-2 justify-end mt-6">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteModal(false);
+                setAddressToDelete(null);
+              }}
+              className="text-white border-white/30 hover:bg-white/10"
+              disabled={actionLoading.delete !== ''}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={actionLoading.delete !== ''}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {actionLoading.delete !== '' ? (
+                <>
+                  <Loader className="h-4 w-4 mr-2 animate-spin" />
+                  Eliminando...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Sí, eliminar
+                </>
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>
