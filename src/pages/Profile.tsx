@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast, toast as toastApi } from "@/hooks/use-toast";
 import { 
   User, 
@@ -22,12 +22,20 @@ import {
   ChevronLeft, 
   ChevronRight,
   Star,
-  ShoppingBag
+  ShoppingBag,
+  Check,
+  X,
+  Shield,
+  AlertCircle,
+  Mail,
+  AlertTriangle  // Agregamos este icono
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { supabase } from "../lib/supabase";
 import { useNavigate } from "react-router-dom";
 import { removeFavorite } from "@/lib/api/favorites";
+import AddressManager from "@/components/AddressManager";
+import Cart from "@/components/Cart"; // Agregar import del Cart
 
 const EDGE_DEACTIVATE_URL = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/deactivate-user";
 const EDGE_ORDERS_URL = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-user-orders";
@@ -69,6 +77,91 @@ interface FavoriteProduct {
   isNew?: boolean;
 }
 
+// Función para obtener el color del estado del pedido
+const getStatusColor = (status: string) => {
+  switch (status.toLowerCase()) {
+    case 'pending':
+    case 'pendiente':
+      return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    case 'processing':
+    case 'procesando':
+      return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+    case 'shipped':
+    case 'enviado':
+      return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+    case 'delivered':
+    case 'entregado':
+      return 'bg-green-500/20 text-green-400 border-green-500/30';
+    case 'cancelled':
+    case 'cancelado':
+      return 'bg-red-500/20 text-red-400 border-red-500/30';
+    default:
+      return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  }
+};
+
+// Función para obtener el color del estado del pago
+const getPaymentStatusColor = (paymentStatus: string) => {
+  switch (paymentStatus.toLowerCase()) {
+    case 'paid':
+    case 'pagado':
+    case 'completed':
+    case 'completado':
+      return 'bg-green-500/20 text-green-400 border-green-500/30';
+    case 'pending':
+    case 'pendiente':
+      return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    case 'failed':
+    case 'fallido':
+      return 'bg-red-500/20 text-red-400 border-red-500/30';
+    case 'refunded':
+    case 'reembolsado':
+      return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+    default:
+      return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  }
+};
+
+// Función para formatear fechas
+const formatDate = (dateString: string) => {
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-CO', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch (error) {
+    return 'Fecha inválida';
+  }
+};
+
+// Función para mostrar modal de confirmación - CORREGIDA
+const showConfirmation = (setConfirmationModal: React.Dispatch<React.SetStateAction<any>>, options: {
+  type: string;
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText?: string;
+  onConfirm: () => void;
+  onCancel?: () => void;
+  variant?: 'default' | 'destructive';
+}) => {
+  setConfirmationModal({
+    open: true,
+    type: options.type,
+    title: options.title,
+    message: options.message,
+    confirmText: options.confirmText,
+    cancelText: options.cancelText || 'Cancelar',
+    onConfirm: options.onConfirm,
+    onCancel: options.onCancel || (() => setConfirmationModal((prev: any) => ({ ...prev, open: false }))), // AGREGADO PARÉNTESIS FALTANTE
+    variant: options.variant || 'default'
+  });
+};
+
 const Profile = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -81,6 +174,34 @@ const Profile = () => {
   const [favorites, setFavorites] = useState<FavoriteProduct[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [profileSection, setProfileSection] = useState<'info' | 'addresses'>('info');
+
+  // Estados para modales de confirmación
+  const [confirmationModal, setConfirmationModal] = useState({
+    open: false,
+    type: '', // 'delete-account', 'cancel-edit', 'remove-favorite', 'add-to-cart'
+    title: '',
+    message: '',
+    confirmText: '',
+    cancelText: '',
+    onConfirm: () => {},
+    onCancel: () => {},
+    variant: 'default' as 'default' | 'destructive'
+  });
+
+  // Estado para guardar datos originales
+  const [originalProfileData, setOriginalProfileData] = useState({
+    full_name: "",
+    phone: "",
+  });
+
+  // Estados de carga para acciones específicas
+  const [actionLoading, setActionLoading] = useState({
+    updateProfile: false,
+    deleteAccount: false,
+    removeFavorite: '',
+    addToCart: ''
+  });
   
   // Estado mejorado para paginación
   const [pagination, setPagination] = useState({
@@ -92,17 +213,21 @@ const Profile = () => {
     hasPrevious: false
   });
   
+  // Estado simplificado sin dirección
   const [profileData, setProfileData] = useState({
     full_name: "Usuario",
     email: "usuario@example.com",
     identification: "",
     phone: "",
-    address: "",
     auth_id: ""
   });
 
   // Mapa de categorías para nombres legibles
   const [categoriesMap, setCategoriesMap] = useState<Record<string, string>>({});
+
+  // Estados para el carrito
+  const [cartItems, setCartItems] = useState([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -118,20 +243,24 @@ const Profile = () => {
         setLoading(false);
         return;
       }
+      
+      // Solo obtener datos que existen en la tabla actualizada
       const { data: dbUser, error: dbError } = await supabase
         .from("users")
-        .select("*")
+        .select("full_name, identification, phone")
         .eq("auth_id", user.id)
         .maybeSingle();
+        
       if (dbError) {
         console.error("Error obteniendo datos de users:", dbError);
       }
+      
+      // Actualizar profileData sin dirección
       setProfileData({
         full_name: dbUser?.full_name || user.user_metadata?.full_name || "Usuario",
-        email: user.email || "usuario@example.com",
+        email: user.email || "usuario@example.com", 
         identification: dbUser?.identification || user.user_metadata?.identification || "",
         phone: dbUser?.phone || user.user_metadata?.phone || "",
-        address: dbUser?.address || "",
         auth_id: user.id
       });
       setLoading(false);
@@ -365,145 +494,209 @@ const Profile = () => {
     );
   };
 
+  // Función para actualizar el perfil
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profileData.full_name.trim()) {
-      toast({ title: "Error", description: "El nombre no puede estar vacío", variant: "destructive" });
-      return;
-    }
-    if (!profileData.phone.trim() || !/^\d{10}$/.test(profileData.phone)) {
-      toast({ title: "Error", description: "El teléfono debe tener exactamente 10 números", variant: "destructive" });
-      return;
-    }
-    if (!profileData.address.trim()) {
-      toast({ title: "Error", description: "La dirección no puede estar vacía", variant: "destructive" });
-      return;
-    }
-    try {
-      const { error } = await supabase
-        .from("users")
-        .update({
-          full_name: profileData.full_name.trim(),
-          phone: profileData.phone.trim(),
-          address: profileData.address.trim(),
-        })
-        .eq("email", profileData.email);
-      if (error) throw error;
-      toast({ title: "Perfil actualizado", description: "Cambios guardados con éxito" });
+    
+    // Verificar si hay cambios
+    const hasChanges = 
+      profileData.full_name.trim() !== originalProfileData.full_name ||
+      profileData.phone.trim() !== originalProfileData.phone;
+
+    if (!hasChanges) {
+      toast({
+        title: "Sin cambios",
+        description: "No se detectaron cambios en la información",
+        variant: "default"
+      });
       setIsEditing(false);
-    } catch (error) {
-      console.error("Error actualizando perfil:", error);
-      toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" });
+      return;
+    }
+
+    // Validaciones
+    if (!profileData.full_name.trim()) {
+      toast({ 
+        title: "Error de validación", 
+        description: "El nombre completo es obligatorio", 
+        variant: "destructive" 
+      });
+      return;
+    }
+    
+    if (!profileData.phone.trim() || !/^\d{10}$/.test(profileData.phone)) {
+      toast({ 
+        title: "Error de validación", 
+        description: "El teléfono debe tener exactamente 10 dígitos", 
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    // Mostrar confirmación con resumen de cambios
+    const changes = [];
+    if (profileData.full_name.trim() !== originalProfileData.full_name) {
+      changes.push(`• Nombre: "${originalProfileData.full_name}" → "${profileData.full_name.trim()}"`);
+    }
+    if (profileData.phone.trim() !== originalProfileData.phone) {
+      changes.push(`• Teléfono: "${originalProfileData.phone}" → "${profileData.phone.trim()}"`);
+    }
+
+    showConfirmationModal({
+      type: 'update-profile',
+      title: '¿Confirmar cambios?',
+      message: `Se actualizará la siguiente información:\n\n${changes.join('\n')}\n\nEsta acción guardará los cambios de forma permanente.`,
+      confirmText: 'Guardar cambios',
+      cancelText: 'Revisar',
+      variant: 'default',
+      onConfirm: async () => {
+        setActionLoading(prev => ({ ...prev, updateProfile: true }));
+        try {
+          const { error } = await supabase
+            .from("users")
+            .update({
+              full_name: profileData.full_name.trim(),
+              phone: profileData.phone.trim(),
+              updated_at: new Date().toISOString()
+            })
+            .eq("email", profileData.email);
+            
+          if (error) throw error;
+          
+          // Actualizar datos originales
+          setOriginalProfileData({
+            full_name: profileData.full_name.trim(),
+            phone: profileData.phone.trim()
+          });
+
+          toast({ 
+            title: "✅ Perfil actualizado", 
+            description: "Los cambios se han guardado correctamente",
+            variant: "default"
+          });
+          setIsEditing(false);
+          setConfirmationModal(prev => ({ ...prev, open: false }));
+        } catch (error) {
+          console.error("Error actualizando perfil:", error);
+          toast({ 
+            title: "❌ Error al actualizar", 
+            description: "No se pudieron guardar los cambios. Intenta nuevamente.", 
+            variant: "destructive" 
+          });
+        } finally {
+          setActionLoading(prev => ({ ...prev, updateProfile: false }));
+        }
+      }
+    });
+  };
+
+  // Función mejorada para cancelar edición
+  const handleCancelEdit = () => {
+    const hasUnsavedChanges = 
+      profileData.full_name.trim() !== originalProfileData.full_name ||
+      profileData.phone.trim() !== originalProfileData.phone;
+
+    if (hasUnsavedChanges) {
+      showConfirmationModal({
+        type: 'cancel-edit',
+        title: '¿Descartar cambios?',
+        message: 'Tienes cambios sin guardar. Si continúas, se perderán todos los cambios realizados.',
+        confirmText: 'Sí, descartar',
+        cancelText: 'Continuar editando',
+        variant: 'destructive',
+        onConfirm: () => {
+          // Restaurar datos originales
+          setProfileData(prev => ({
+            ...prev,
+            full_name: originalProfileData.full_name,
+            phone: originalProfileData.phone
+          }));
+          setIsEditing(false);
+          setConfirmationModal(prev => ({ ...prev, open: false }));
+          toast({
+            title: "Edición cancelada",
+            description: "Se han descartado los cambios",
+            variant: "default"
+          });
+        }
+      });
+    } else {
+      setIsEditing(false);
     }
   };
 
-  // Función para obtener el color del estado
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'pendiente':
-        return 'bg-yellow-500';
-      case 'confirmado':
-        return 'bg-blue-500';
-      case 'enviado':
-        return 'bg-purple-500';
-      case 'entregado':
-        return 'bg-green-500';
-      case 'cancelado':
-        return 'bg-red-500';
-      default:
-        return 'bg-gray-500';
-    }
-  };
-
-  // Función para obtener el color del estado de pago
-  const getPaymentStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'pagado':
-      case 'aprobado':
-        return 'bg-green-500';
-      case 'pendiente':
-        return 'bg-yellow-500';
-      case 'rechazado':
-      case 'fallido':
-        return 'bg-red-500';
-      default:
-        return 'bg-gray-500';
-    }
-  };
-
-  // Función para formatear fecha
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-CO', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+  // Función mejorada para iniciar edición
+  const handleStartEdit = () => {
+    // Guardar estado actual como backup
+    setOriginalProfileData({
+      full_name: profileData.full_name,
+      phone: profileData.phone
+    });
+    setIsEditing(true);
+    
+    toast({
+      title: "Modo de edición activado",
+      description: "Puedes modificar tu información. Recuerda guardar los cambios.",
+      variant: "default"
     });
   };
 
   // Eliminación lógica usando Edge Function
   const handleDeleteAccount = async () => {
-    const confirmationToast = toastApi({
-      title: "¿Seguro que deseas cancelar tu cuenta?",
-      description: (
-        <>
-          <span className="block mb-2">
-            <strong className="text-destructive">Esta acción es IRREVERSIBLE.</strong>
-            <br />
-            <span>No podrás volver a ingresar ni recuperar tu cuenta. Se notificará por correo.</span>
-          </span>
-          <div className="flex gap-2 mt-4">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => confirmationToast.dismiss()}
-            >
-              Cancelar
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={async () => {
-                confirmationToast.dismiss();
-                try {
-                  const { data: sessionData } = await supabase.auth.getSession();
-                  const access_token = sessionData?.session?.access_token;
-                  if (!access_token) throw new Error("Sesión inválida.");
-                  const response = await fetch(EDGE_DEACTIVATE_URL, {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${access_token}`,
-                    }
-                  });
-                  const result = await response.json();
-                  if (!result.ok) {
-                    throw new Error(result.error || "Error desconocido");
-                  }
-                  await supabase.auth.signOut();
-                  toast({
-                    title: "Cuenta cancelada",
-                    description: "Tu cuenta ha sido desactivada y recibirás un correo de confirmación.",
-                    variant: "destructive"
-                  });
-                  navigate('/');
-                } catch (error: any) {
-                  toast({
-                    title: "Error",
-                    description: error?.message || "No se pudo eliminar la cuenta",
-                    variant: "destructive"
-                  });
-                }
-              }}
-            >
-              Sí, cancelar cuenta
-            </Button>
-          </div>
-        </>
-      ),
-      duration: 12000,
-      variant: "destructive"
+    showConfirmationModal({
+      type: 'delete-account',
+      title: '⚠️ ELIMINAR CUENTA PERMANENTEMENTE',
+      message: `Esta acción es IRREVERSIBLE y eliminará permanentemente:
+
+• Toda tu información personal
+• Historial de pedidos y compras  
+• Lista de productos favoritos
+• Todas las direcciones guardadas
+• Acceso completo a la plataforma
+
+Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo electrónico.
+
+¿Estás completamente seguro de que deseas continuar?`,
+      confirmText: 'SÍ, ELIMINAR MI CUENTA',
+      cancelText: 'No, mantener mi cuenta',
+      variant: 'destructive',
+      onConfirm: async () => {
+        setActionLoading(prev => ({ ...prev, deleteAccount: true }));
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const access_token = sessionData?.session?.access_token;
+          if (!access_token) throw new Error("Sesión inválida.");
+          
+          const response = await fetch(EDGE_DEACTIVATE_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${access_token}`,
+            }
+          });
+          
+          const result = await response.json();
+          if (!result.ok) {
+            throw new Error(result.error || "Error desconocido");
+          }
+          
+          await supabase.auth.signOut();
+          toast({
+            title: "✅ Cuenta eliminada",
+            description: "Tu cuenta ha sido eliminada permanentemente. Recibirás un correo de confirmación.",
+            variant: "destructive"
+          });
+          navigate('/');
+        } catch (error: any) {
+          toast({
+            title: "❌ Error al eliminar cuenta",
+            description: error?.message || "No se pudo eliminar la cuenta. Intenta nuevamente.",
+            variant: "destructive"
+          });
+        } finally {
+          setActionLoading(prev => ({ ...prev, deleteAccount: false }));
+          setConfirmationModal(prev => ({ ...prev, open: false }));
+        }
+      }
     });
   };
 
@@ -612,40 +805,101 @@ const Profile = () => {
     }
   }, [activeTab, profileData.auth_id, categoriesMap]);
 
-  // Función para eliminar favorito
-  const handleRemoveFavorite = async (productId: number) => {
-    try {
-      const success = await removeFavorite(productId);
-      if (success) {
-        setFavorites(prev => prev.filter(fav => fav.id !== productId));
-        toast({
-          title: "Eliminado de favoritos",
-          description: "El producto ha sido removido de tus favoritos."
-        });
-      } else {
-        toast({
-          title: "Error",
-          description: "No se pudo eliminar de favoritos",
-          variant: "destructive"
-        });
-      }
-    } catch (error) {
-      console.error("Error removing favorite:", error);
-      toast({
-        title: "Error",
-        description: "No se pudo eliminar de favoritos",
-        variant: "destructive"
-      });
-    }
+  // Función para mostrar modal de confirmación
+  const showConfirmationModal = (options: {
+    type: string;
+    title: string;
+    message: string;
+    confirmText: string;
+    cancelText?: string;
+    onConfirm: () => void;
+    onCancel?: () => void;
+    variant?: 'default' | 'destructive';
+  }) => {
+    showConfirmation(setConfirmationModal, options);
   };
 
-  // Función para agregar al carrito (placeholder)
-  const handleAddToCart = (product: FavoriteProduct) => {
-    // Aquí puedes implementar la lógica para agregar al carrito
-    toast({
-      title: "Agregado al carrito",
-      description: `${product.name} ha sido agregado al carrito`,
+  // Función mejorada para eliminar favorito con confirmación toast
+  const handleRemoveFavorite = async (product: FavoriteProduct) => {
+    showConfirmationModal({
+      type: 'remove-favorite',
+      title: '¿Eliminar de favoritos?',
+      message: `¿Estás seguro de que deseas eliminar "${product.name}" de tu lista de favoritos?`,
+      confirmText: 'Sí, eliminar',
+      cancelText: 'Cancelar',
+      variant: 'destructive',
+      onConfirm: async () => {
+        setActionLoading(prev => ({ ...prev, removeFavorite: product.id.toString() }));
+        try {
+          const success = await removeFavorite(product.id);
+          if (success) {
+            setFavorites(prev => prev.filter(fav => fav.id !== product.id));
+            toast({
+              title: "✅ Eliminado de favoritos",
+              description: `"${product.name}" ha sido removido de tus favoritos.`,
+              variant: "default"
+            });
+          } else {
+            throw new Error("No se pudo eliminar el producto");
+          }
+        } catch (error) {
+          console.error("Error removing favorite:", error);
+          toast({
+            title: "❌ Error",
+            description: "No se pudo eliminar de favoritos. Intenta nuevamente.",
+            variant: "destructive"
+          });
+        } finally {
+          setActionLoading(prev => ({ ...prev, removeFavorite: '' }));
+          setConfirmationModal(prev => ({ ...prev, open: false }));
+        }
+      }
     });
+  };
+
+  // Función mejorada para agregar al carrito con confirmación toast
+  const handleAddToCart = (product: FavoriteProduct) => {
+    showConfirmationModal({
+      type: 'add-to-cart',
+      title: 'Agregar al carrito',
+      message: `¿Deseas agregar "${product.name}" al carrito por $${product.price.toLocaleString()}?`,
+      confirmText: 'Sí, agregar',
+      cancelText: 'Cancelar',
+      variant: 'default',
+      onConfirm: async () => {
+        setActionLoading(prev => ({ ...prev, addToCart: product.id.toString() }));
+        
+        // Simular acción de agregar al carrito
+        setTimeout(() => {
+          toast({
+            title: "✅ Agregado al carrito",
+            description: `"${product.name}" ha sido agregado al carrito`,
+            variant: "default"
+          });
+          setActionLoading(prev => ({ ...prev, addToCart: '' }));
+          setConfirmationModal(prev => ({ ...prev, open: false }));
+        }, 1000);
+      }
+    });
+  };
+
+  // Funciones para manejar el carrito
+  const handleCartClick = () => {
+    setIsCartOpen(true);
+  };
+
+  const handleCloseCart = () => {
+    setIsCartOpen(false);
+  };
+
+  const handleUpdateQuantity = (id: number, quantity: number, selectedSize?: string) => {
+    // Implementar lógica de actualización si es necesaria
+    console.log("Update quantity:", id, quantity, selectedSize);
+  };
+
+  const handleRemoveItem = (id: number, selectedSize?: string) => {
+    // Implementar lógica de eliminación si es necesaria
+    console.log("Remove item:", id, selectedSize);
   };
 
   if (loading) return (
@@ -658,11 +912,12 @@ const Profile = () => {
   return (
     <div className="w-full max-w-4xl mx-auto">
       <Navbar
-        cartItems={0}
-        onCartClick={() => {}}
+        cartItems={cartItems.length}
+        onCartClick={handleCartClick} // Ahora funciona correctamente
         onContactClick={() => {}}
         onFavoritesClick={() => {}}
       />
+      
       <main className="pt-24 px-4 sm:px-6 lg:px-8 pb-16">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
           <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto mb-6 bg-white/20 rounded-xl shadow">
@@ -680,125 +935,300 @@ const Profile = () => {
           <TabsContent value="profile">
             <Card className="glass border border-orange-200/50 shadow-xl">
               <CardHeader>
-                <CardTitle className="text-white text-2xl">Información Personal</CardTitle>
-                <CardDescription className="text-white/70">
-                  Gestiona tus datos de perfil
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-7">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label className="text-white">Nombre completo *</Label>
-                      {isEditing ? (
-                        <Input
-                          required
-                          value={profileData.full_name}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              full_name: e.target.value
-                            })
-                          }
-                          placeholder="Ingresa tu nombre completo"
-                          className={!profileData.full_name.trim() ? "border-red-500" : ""}
-                        />
-                      ) : (
-                        <p className="text-white/80 pt-2">{profileData.full_name}</p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-white">Cédula</Label>
-                      <p className="text-white/80 pt-2">{profileData.identification}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-white">Correo electrónico</Label>
-                      <p className="text-white/80 pt-2">{profileData.email}</p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-white">Teléfono * (10 dígitos)</Label>
-                      {isEditing ? (
-                        <Input
-                          required
-                          type="tel"
-                          maxLength={10}
-                          pattern="\d{10}"
-                          value={profileData.phone}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, '').slice(0, 10);
-                            setProfileData({
-                              ...profileData,
-                              phone: value
-                            });
-                          }}
-                          placeholder="Ingresa tu teléfono (10 dígitos)"
-                          className={
-                            !profileData.phone.trim() || !/^\d{10}$/.test(profileData.phone)
-                              ? "border-red-500"
-                              : ""
-                          }
-                        />
-                      ) : (
-                        <p className="text-white/80 pt-2">{profileData.phone || "No especificado"}</p>
-                      )}
-                      {isEditing && profileData.phone && !/^\d{10}$/.test(profileData.phone) && (
-                        <p className="text-sm text-red-500 mt-1">
-                          El teléfono debe tener exactamente 10 números
-                        </p>
-                      )}
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-white">Dirección *</Label>
-                      {isEditing ? (
-                        <Input
-                          required
-                          value={profileData.address}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              address: e.target.value
-                            })
-                          }
-                          placeholder="Ingresa tu dirección"
-                          className={!profileData.address.trim() ? "border-red-500" : ""}
-                        />
-                      ) : (
-                        <p className="text-white/80 pt-2">{profileData.address || "No especificada"}</p>
-                      )}
-                    </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-white text-2xl">
+                      {profileSection === 'info' ? 'Información Personal' : 'Mis Direcciones'}
+                    </CardTitle>
+                    <CardDescription className="text-white/70">
+                      {profileSection === 'info' 
+                        ? 'Gestiona tus datos de perfil y contacto' 
+                        : 'Administra tus direcciones de envío'
+                      }
+                    </CardDescription>
                   </div>
-                  <div className="flex flex-col md:flex-row gap-3 pt-8">
-                    {isEditing ? (
-                      <>
-                        <Button onClick={handleUpdateProfile} variant="hero">
-                          Guardar Cambios
-                        </Button>
-                        <Button onClick={() => setIsEditing(false)} variant="outline">
-                          Cancelar
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          onClick={() => setIsEditing(true)}
-                          variant="outline"
-                          className="flex items-center gap-2"
-                        >
-                          <Edit className="h-4 w-4" />
-                          Modificar Información
-                        </Button>
-                        <Button
-                          onClick={handleDeleteAccount}
-                          variant="destructive"
-                          className="flex items-center gap-2"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          Cancelar Cuenta
-                        </Button>
-                      </>
-                    )}
+                  
+                  <div className="flex gap-2">
+                    <Button
+                      variant={profileSection === 'info' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setProfileSection('info')}
+                    >
+                      <User className="h-4 w-4 mr-2" />
+                      Información
+                    </Button>
+                    <Button
+                      variant={profileSection === 'addresses' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setProfileSection('addresses')}
+                    >
+                      <MapPin className="h-4 w-4 mr-2" />
+                      Direcciones
+                    </Button>
                   </div>
                 </div>
+              </CardHeader>
+
+              <CardContent>
+                {profileSection === 'info' ? (
+                  <div className="space-y-7">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Nombre completo */}
+                      <div className="space-y-2">
+                        <Label className="text-white font-medium flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          Nombre completo *
+                        </Label>
+                        {isEditing ? (
+                          <Input
+                            required
+                            value={profileData.full_name}
+                            onChange={(e) =>
+                              setProfileData({
+                                ...profileData,
+                                full_name: e.target.value
+                              })
+                            }
+                            placeholder="Ingresa tu nombre completo"
+                            className={`bg-white/10 border-white/30 text-white placeholder:text-white/50 focus:border-primary ${
+                              !profileData.full_name.trim() ? "border-red-500" : ""
+                            }`}
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10">
+                            <span className="text-white">{profileData.full_name}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Cédula */}
+                      <div className="space-y-2">
+                        <Label className="text-white font-medium flex items-center gap-2">
+                          <CreditCard className="h-4 w-4" />
+                          Número de identificación
+                        </Label>
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10">
+                          <span className="text-white">
+                            {profileData.identification || "No especificado"}
+                          </span>
+                          <Badge variant="secondary" className="text-xs">
+                            Solo lectura
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Email */}
+                      <div className="space-y-2">
+                        <Label className="text-white font-medium flex items-center gap-2">
+                          <Mail className="h-4 w-4" />
+                          Correo electrónico
+                        </Label>
+                        <div className="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10">
+                          <span className="text-white">{profileData.email}</span>
+                          <Badge variant="secondary" className="text-xs">
+                            Verificado
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Teléfono */}
+                      <div className="space-y-2">
+                        <Label className="text-white font-medium flex items-center gap-2">
+                          <Phone className="h-4 w-4" />
+                          Teléfono de contacto * (10 dígitos)
+                        </Label>
+                        {isEditing ? (
+                          <div className="space-y-2">
+                            <Input
+                              required
+                              type="tel"
+                              maxLength={10}
+                              pattern="\d{10}"
+                              value={profileData.phone}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                setProfileData({
+                                  ...profileData,
+                                  phone: value
+                                });
+                              }}
+                              placeholder="Ej: 3001234567"
+                              className={`bg-white/10 border-white/30 text-white placeholder:text-white/50 focus:border-primary ${
+                                !profileData.phone.trim() || !/^\d{10}$/.test(profileData.phone)
+                                  ? "border-red-500"
+                                  : ""
+                              }`}
+                            />
+                            {profileData.phone && !/^\d{10}$/.test(profileData.phone) && (
+                              <p className="text-sm text-red-400 flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                El teléfono debe tener exactamente 10 números
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 p-3 rounded-lg bg-white/5 border border-white/10">
+                            <span className="text-white">
+                              {profileData.phone ? 
+                                `+57 ${profileData.phone.replace(/(\d{3})(\d{3})(\d{4})/, '$1 $2 $3')}` : 
+                                "No especificado"
+                              }
+                            </span>
+                            {!profileData.phone && (
+                              <Badge variant="destructive" className="text-xs">
+                                Requerido
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Información adicional MEJORADA */}
+                    {!isEditing && (
+                      <div className="bg-white/5 rounded-lg border border-white/10 p-4 md:p-6">
+                        <h4 className="text-white font-medium mb-3 flex items-center gap-2">
+                          <MapPin className="h-4 w-4" />
+                          Información de envío
+                        </h4>
+                        <p className="text-white/70 text-sm mb-6">
+                          Tus direcciones de envío se gestionan por separado en la sección "Direcciones". 
+                          Esto te permite tener múltiples direcciones y seleccionar la adecuada para cada pedido.
+                        </p>
+                        
+                        {/* Botones mejorados y completamente responsivos */}
+                        <div className="address-buttons-container">
+                          <Button
+                            variant="outline"
+                            onClick={() => setProfileSection('addresses')}
+                            className="address-button text-white border-white/30 hover:bg-white/10 transition-all duration-300"
+                          >
+                            <MapPin className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-adaptive-long">Gestionar Direcciones</span>
+                            <span className="text-adaptive-short">Direcciones</span>
+                          </Button>
+                          
+                          <Button
+                            variant="ghost"
+                            onClick={handleCartClick}
+                            className="address-button text-white hover:bg-white/10 transition-all duration-300"
+                          >
+                            <ShoppingBag className="h-4 w-4 flex-shrink-0" />
+                            <span className="text-adaptive-long">Ver Carrito</span>
+                            <span className="text-adaptive-short">Carrito</span>
+                            {cartItems.length > 0 && (
+                              <Badge variant="secondary" className="ml-1 text-xs flex-shrink-0">
+                                {cartItems.length}
+                              </Badge>
+                            )}
+                          </Button>
+                        </div>
+
+                        {/* Información adicional responsive */}
+                        <div className="mt-6 p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                          <p className="text-blue-200 text-sm">
+                            <span className="text-adaptive-long">💡 <strong>Consejo:</strong> Configura múltiples direcciones para envíos más rápidos y convenientes</span>
+                            <span className="text-adaptive-short">💡 <strong>Tip:</strong> Agrega varias direcciones para envíos rápidos</span>
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Botones de acción actualizados */}
+                    <div className="profile-action-buttons pt-6 border-t border-white/20">
+                      {isEditing ? (
+                        <>
+                          <Button 
+                            onClick={handleUpdateProfile} 
+                            variant="hero"
+                            disabled={actionLoading.updateProfile}
+                            className="button-responsive flex items-center gap-2"
+                          >
+                            {actionLoading.updateProfile ? (
+                              <>
+                                <Loader className="h-4 w-4 animate-spin" />
+                                <span className="hidden sm:inline">Guardando...</span>
+                                <span className="sm:hidden">Guardando</span>
+                              </>
+                            ) : (
+                              <>
+                                <Check className="h-4 w-4" />
+                                <span className="hidden sm:inline">Guardar Cambios</span>
+                                <span className="sm:hidden">Guardar</span>
+                              </>
+                            )}
+                          </Button>
+                          <Button 
+                            onClick={handleCancelEdit} 
+                            variant="outline"
+                            disabled={actionLoading.updateProfile}
+                            className="button-responsive text-white border-white/30 hover:bg-white/10"
+                          >
+                            <X className="h-4 w-4 mr-2" />
+                            Cancelar
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button
+                            onClick={handleStartEdit}
+                            variant="outline"
+                            className="button-responsive flex items-center gap-2 text-white border-white/30 hover:bg-white/10"
+                          >
+                            <Edit className="h-4 w-4" />
+                            <span className="hidden sm:inline">Editar Información</span>
+                            <span className="sm:hidden">Editar</span>
+                          </Button>
+                          <Button
+                            onClick={handleDeleteAccount}
+                            variant="destructive"
+                            disabled={actionLoading.deleteAccount}
+                            className="button-responsive flex items-center gap-2"
+                          >
+                            {actionLoading.deleteAccount ? (
+                              <>
+                                <Loader className="h-4 w-4 animate-spin" />
+                                <span className="hidden sm:inline">Eliminando...</span>
+                                <span className="sm:hidden">Eliminando</span>
+                              </>
+                            ) : (
+                              <>
+                                <Trash2 className="h-4 w-4" />
+                                <span className="hidden sm:inline">Eliminar Cuenta</span>
+                                <span className="sm:hidden">Eliminar</span>
+                              </>
+                            )}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Información de seguridad */}
+                    <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                      <h4 className="text-blue-400 font-medium mb-2 flex items-center gap-2">
+                        <Shield className="h-4 w-4" />
+                        Seguridad de la cuenta
+                      </h4>
+                      <p className="text-blue-100/70 text-sm mb-3">
+                        Tu información está protegida. El número de identificación no puede modificarse 
+                        por seguridad. Para cambios de correo, contacta soporte.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline" className="text-blue-400 border-blue-400/50">
+                          <Check className="h-3 w-3 mr-1" />
+                          Email verificado
+                        </Badge>
+                        <Badge variant="outline" className="text-blue-400 border-blue-400/50">
+                          <Shield className="h-3 w-3 mr-1" />
+                          Datos seguros
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // Gestión de direcciones (sin cambios)
+                  <AddressManager mode="manage" />
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -998,18 +1428,27 @@ const Profile = () => {
                                 )}
                               </div>
 
-                              {/* Remove from favorites */}
+                              {/* Botón mejorado para eliminar de favoritos */}
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="absolute top-3 right-3 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white"
-                                onClick={() => handleRemoveFavorite(product.id)}
+                                disabled={actionLoading.removeFavorite === product.id.toString()}
+                                className="absolute top-3 right-3 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white disabled:opacity-50 transition-all duration-300"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleRemoveFavorite(product);
+                                }}
+                                title="Eliminar de favoritos"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                {actionLoading.removeFavorite === product.id.toString() ? (
+                                  <Loader className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Heart className="h-4 w-4 fill-current" />
+                                )}
                               </Button>
                             </div>
 
-                            {/* Product Info */}
                             <div className="p-4 space-y-3">
                               <div className="flex items-center justify-between">
                                 <Badge variant="outline" className="text-xs text-white border-white/30">
@@ -1038,13 +1477,28 @@ const Profile = () => {
                                 </div>
                               </div>
 
+                              {/* Botón mejorado para agregar al carrito */}
                               <Button
-                                onClick={() => handleAddToCart(product)}
-                                className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white transition-all duration-300 hover:scale-105"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleAddToCart(product);
+                                }}
+                                disabled={actionLoading.addToCart === product.id.toString()}
+                                className="w-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-600 hover:to-red-700 text-white transition-all duration-300 hover:scale-105 disabled:opacity-50"
                                 size="sm"
                               >
-                                <ShoppingBag className="h-4 w-4 mr-2" />
-                                Agregar al Carrito
+                                {actionLoading.addToCart === product.id.toString() ? (
+                                  <>
+                                    <Loader className="h-4 w-4 mr-2 animate-spin" />
+                                    Agregando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <ShoppingBag className="h-4 w-4 mr-2" />
+                                    Agregar al Carrito
+                                  </>
+                                )}
                               </Button>
                             </div>
                           </CardContent>
@@ -1190,6 +1644,51 @@ const Profile = () => {
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Modal de Confirmación NUEVO */}
+        <Dialog open={confirmationModal.open} onOpenChange={(open) => setConfirmationModal(prev => ({ ...prev, open }))}>
+          <DialogContent className="max-w-md bg-card/95 backdrop-blur-md border border-white/20">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
+                {confirmationModal.variant === 'destructive' ? (
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-blue-500" />
+                )}
+                {confirmationModal.title}
+              </DialogTitle>
+              <DialogDescription className="text-white/70 whitespace-pre-line text-sm leading-relaxed">
+                {confirmationModal.message}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="flex flex-col gap-3 mt-6">
+              <Button
+                onClick={confirmationModal.onConfirm}
+                variant={confirmationModal.variant === 'destructive' ? 'destructive' : 'hero'}
+                className="w-full"
+              >
+                {confirmationModal.confirmText}
+              </Button>
+              <Button
+                onClick={confirmationModal.onCancel}
+                variant="outline"
+                className="w-full text-white border-white/30 hover:bg-white/10"
+              >
+                {confirmationModal.cancelText}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Componente Cart */}
+        <Cart
+          isOpen={isCartOpen}
+          onClose={handleCloseCart}
+          items={cartItems}
+          onUpdateQuantity={handleUpdateQuantity}
+          onRemoveItem={handleRemoveItem}
+        />
       </main>
     </div>
   );
