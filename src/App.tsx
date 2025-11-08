@@ -23,6 +23,12 @@ import AdminRoute from "./components/AdminRoute";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import PagoExitoso from "./pages/PagoExitoso";
+import Footer from './components/Footer';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import TermsOfService from './pages/TermsOfService';
+import ReturnPolicy from './pages/ReturnPolicy';
+import About from './pages/About';
+import ShippingPolicy from './pages/ShippingPolicy';
 
 
 const queryClient = new QueryClient();
@@ -87,11 +93,18 @@ const App = () => {
                   }
                 />
 
+                {/* Nuevas rutas agregadas */}
+                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                <Route path="/terms-of-service" element={<TermsOfService />} />
+                <Route path="/return-policy" element={<ReturnPolicy />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/shipping-policy" element={<ShippingPolicy />} />
 
                 {/* Ruta catch-all */}
                 <Route path="*" element={<NotFound />} />
           
           </Routes>
+          <Footer />
         </Router>
         </TooltipProvider>
       </QueryClientProvider>
