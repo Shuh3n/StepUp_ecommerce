@@ -3,11 +3,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, Plus, Minus, ShoppingCart, Trash2, Edit, ChevronLeft, Check, AlertCircle } from "lucide-react";
+import { X, Plus, Minus, ShoppingCart, Trash2, Edit, ChevronLeft, Check, AlertCircle, MapPin, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import AddressManager from "./AddressManager";
-import { MapPin, CreditCard } from "lucide-react";
 
 // Edge Functions URLs
 const EDGE_ADD_TO_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/add-to-cart";
@@ -45,9 +44,11 @@ interface CartProps {
   availableSizes?: AvailableSize[];
 }
 
+type AddressType = 'home' | 'work' | 'other' | 'parents' | 'friend' | 'office' | 'warehouse';
+
 interface Address {
   id: string;
-  address_type: string;
+  address_type: AddressType;
   address_line_1: string;
   address_line_2?: string;
   city: string;
@@ -55,7 +56,9 @@ interface Address {
   postal_code: string;
   country: string;
   is_default: boolean;
-  is_active: boolean;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 const Cart = ({
@@ -75,7 +78,6 @@ const Cart = ({
   const [loadingClearCart, setLoadingClearCart] = useState(false);
   const [categoriesMap, setCategoriesMap] = useState<Record<string, string>>({});
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
-  const [showAddressSelection, setShowAddressSelection] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'address' | 'payment'>('cart');
   const { toast } = useToast();
 
@@ -216,7 +218,7 @@ const Cart = ({
     setLoadingItemId(null);
   };
 
-  // Disminuir cantidad (solo actualiza local, pero podrías agregar edge si lo deseas)
+  // Disminuir cantidad
   const handleSubtractQuantity = async (item: CartItem) => {
     if (item.quantity > 1) {
       setLoadingItemId(item.cartItemId);
@@ -233,13 +235,13 @@ const Cart = ({
           },
           body: JSON.stringify({
             product_id: item.id,
-            variant_id: item.variantId || null, // <-- Asegura que sea null si no existe
+            variant_id: item.variantId || null,
             quantity: 1
           }),
         });
-        
+
         const result = await response.json();
-        
+
         if (result.ok) {
           toast({
             title: "Producto actualizado",
@@ -247,7 +249,6 @@ const Cart = ({
           });
           await fetchCartItems();
         } else {
-          console.error("Error al restar cantidad:", result); // <-- Para debug
           toast({
             title: "Error",
             description: result.error || "No se pudo actualizar el carrito",
@@ -255,7 +256,6 @@ const Cart = ({
           });
         }
       } catch (error: any) {
-        console.error("Error en handleSubtractQuantity:", error); // <-- Para debug
         toast({
           title: "Error",
           description: error?.message || "No se pudo actualizar el carrito",
@@ -377,12 +377,6 @@ const Cart = ({
     setCheckoutStep('payment');
   };
 
-  const handleNavigateToProfile = () => {
-    // Cerrar el carrito y navegar al perfil
-    onClose();
-    window.location.href = '/profile?tab=profile&section=addresses';
-  };
-
   // Actualizar handleCheckout para incluir la dirección
   const handleCheckout = async () => {
     if (!selectedAddress) {
@@ -421,7 +415,7 @@ const Cart = ({
           talla: item.selectedSize ?? null,
         })),
         address: fullAddress,
-        phone: null, // Puedes agregar campo de teléfono si es necesario
+        phone: null,
         payment_method: "paypal",
         shipping,
       };
@@ -490,7 +484,6 @@ const Cart = ({
     }
     setLoadingCheckout(false);
     setLoadingClearCart(true);
-
   };
 
   if (!isOpen) return null;
@@ -787,7 +780,6 @@ const Cart = ({
                   mode="select"
                   onAddressSelect={handleAddressSelect}
                   selectedAddressId={selectedAddress?.id}
-                  onNavigateToProfile={handleNavigateToProfile}
                   compact={true}
                 />
               </div>

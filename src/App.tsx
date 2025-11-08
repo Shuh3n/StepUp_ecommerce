@@ -29,7 +29,7 @@ import TermsOfService from './pages/TermsOfService';
 import ReturnPolicy from './pages/ReturnPolicy';
 import About from './pages/About';
 import ShippingPolicy from './pages/ShippingPolicy';
-
+import PaymentSuccess from '@/pages/PaymentSuccess';
 
 const queryClient = new QueryClient();
 
@@ -64,6 +64,7 @@ const App = () => {
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/auth-callback" element={<AuthCallback />} />
                 <Route path="/pago-exitoso" element={<PagoExitoso />} />
+                <Route path="/payment-success" element={<PaymentSuccess />} />
                 
                 {/* Ruta específica para nuevos usuarios de Google */}
                 <Route 
