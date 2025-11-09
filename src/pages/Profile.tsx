@@ -1569,7 +1569,7 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                   </div>
                 )}
 
-                {/* Productos del pedido */}
+                {/* Productos del pedido - ACTUALIZADO para mostrar tallas */}
                 <div className="space-y-4">
                   <Label className="text-white/70">Productos</Label>
                   <div className="space-y-3">
@@ -1596,17 +1596,42 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                                 </div>
                               )}
                             </div>
-                            <div className="flex-1 space-y-1">
+                            <div className="flex-1 space-y-2">
                               <h4 className="text-white font-medium">{item.name}</h4>
-                              {item.size && (
-                                <p className="text-white/70 text-sm">Talla: {item.size}</p>
-                              )}
-                              <p className="text-white/70 text-sm">
-                                Cantidad: {item.quantity} × ${item.price.toLocaleString()}
-                              </p>
+                              
+                              {/* Información de talla y cantidad */}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-white/70 text-sm">
+                                  <span className="font-medium">Cantidad:</span> {item.quantity}
+                                </div>
+                                
+                                {item.size && (
+                                  <div className="text-white/70 text-sm">
+                                    <span className="font-medium">•</span>
+                                  </div>
+                                )}
+                                
+                                {item.size && (
+                                  <Badge variant="outline" className="text-xs border-blue-400/50 text-blue-300">
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs">👕</span>
+                                      <span>Talla {item.size}</span>
+                                    </div>
+                                  </Badge>
+                                )}
+                              </div>
+                              
+                              <div className="text-white/70 text-sm">
+                                <span className="font-medium">Precio unitario:</span> ${item.price.toLocaleString()}
+                              </div>
                             </div>
-                            <div className="text-white font-medium">
-                              ${(item.price * item.quantity).toLocaleString()}
+                            <div className="text-right">
+                              <div className="text-white font-bold text-lg">
+                                ${(item.price * item.quantity).toLocaleString()}
+                              </div>
+                              <div className="text-white/50 text-xs">
+                                {item.quantity} × ${item.price.toLocaleString()}
+                              </div>
                             </div>
                           </div>
                         </CardContent>
