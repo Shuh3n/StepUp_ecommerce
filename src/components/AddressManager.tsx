@@ -431,6 +431,28 @@ const AddressManager: React.FC<AddressManagerProps> = ({
     }
   };
 
+  // Función para manejar click en dirección - MEJORADA con logs
+  const handleAddressClick = (address: Address) => {
+    console.log('🏠 Address clicked:', {
+      mode,
+      addressId: address.id,
+      addressType: address.address_type,
+      onAddressSelect: !!onAddressSelect
+    });
+    
+    if (mode === 'select') {
+      if (onAddressSelect) {
+        onAddressSelect(address);
+        console.log('✅ Address selection callback called');
+      } else {
+        console.warn('⚠️ onAddressSelect callback not provided');
+      }
+    } else if (mode === 'manage') {
+      // En modo manage, no hacer nada al hacer clic (solo editar con botones)
+      console.log('📝 Manage mode - click ignored');
+    }
+  };
+
   return (
     <>
       <div className="space-y-4">
@@ -473,12 +495,13 @@ const AddressManager: React.FC<AddressManagerProps> = ({
                 {addresses.map((address) => (
                   <div
                     key={address.id}
-                    onClick={() => onAddressSelect?.(address)}
-                    className={`${compact ? 'p-3' : 'p-4'} rounded-lg border cursor-pointer transition-all duration-200 ${
-                      selectedAddressId === address.id
+                    className={`p-4 rounded-lg border cursor-pointer transition-all ${
+                      (mode === 'select' && selectedAddressId === address.id) ||
+                      (mode === 'edit' && editingAddress?.id === address.id)
                         ? 'border-primary bg-primary/10'
-                        : 'border-white/20 bg-white/5 hover:border-primary/50 hover:bg-primary/5'
-                    }`}
+                        : 'border-white/20 bg-black/60 hover:bg-black/80'
+                    } ${!compact ? 'mb-4' : 'mb-3'}`}
+                    onClick={() => handleAddressClick(address)}
                   >
                     <div className="flex items-center gap-3">
                       <div className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} rounded-full border-2 flex-shrink-0 ${

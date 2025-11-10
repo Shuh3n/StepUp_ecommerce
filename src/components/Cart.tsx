@@ -911,7 +911,8 @@ const handleSizeChange = async (item: CartItem, newSize: string) => {
                             </div>
                           </div>
                           <div className="text-primary font-bold">
-                            ${(item.price * item.quantity).toLocaleString()}
+                            ${(item.price * item.quantity).toLocaleString()
+}
                           </div>
                         </div>
 
@@ -1019,15 +1020,46 @@ const handleSizeChange = async (item: CartItem, newSize: string) => {
         {/* Resto del componente se mantiene igual */}
         {checkoutStep === 'address' && (
           <div className="flex flex-col h-full">
-            {/* ... resto del código para address step */}
-            <div className="flex-1 p-6">
-              <AddressManager
-                mode="select"
-                onAddressSelect={handleAddressSelect}
-                selectedAddressId={selectedAddress?.id}
-                compact={true}
-              />
+            <div className="flex-1 p-6 overflow-y-auto">
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-white mb-2">Selecciona tu dirección de envío</h3>
+                <p className="text-gray-300 text-sm">
+                  Elige dónde quieres recibir tu pedido
+                </p>
+              </div>
+              
+              {/* Wrapper con fondo negro para las direcciones */}
+              <div className="bg-black/40 rounded-lg p-4 border border-white/10">
+                <AddressManager
+                  mode="select"
+                  onAddressSelect={handleAddressSelect}
+                  selectedAddressId={selectedAddress?.id}
+                  compact={true}
+                />
+              </div>
+
+              {/* Mostrar dirección seleccionada */}
+              {selectedAddress && (
+                <div className="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Check className="h-4 w-4 text-green-400" />
+                    <span className="text-green-300 font-medium">Dirección seleccionada</span>
+                  </div>
+                  <div className="text-sm text-gray-300">
+                    <p className="font-medium text-white">
+                      {selectedAddress.address_type.charAt(0).toUpperCase() + selectedAddress.address_type.slice(1)}
+                    </p>
+                    <p>{selectedAddress.address_line_1}</p>
+                    {selectedAddress.address_line_2 && <p>{selectedAddress.address_line_2}</p>}
+                    <p>
+                      {selectedAddress.city}, {selectedAddress.state} {selectedAddress.postal_code}
+                    </p>
+                    <p>{selectedAddress.country}</p>
+                  </div>
+                </div>
+              )}
             </div>
+            
             <div className="border-t border-white/20 p-6">
               <Button
                 variant="hero"
@@ -1035,7 +1067,7 @@ const handleSizeChange = async (item: CartItem, newSize: string) => {
                 onClick={handleProceedToPayment}
                 disabled={!selectedAddress}
               >
-                Continuar al Pago
+                {selectedAddress ? 'Continuar al Pago' : 'Selecciona una Dirección'}
               </Button>
             </div>
           </div>
@@ -1043,18 +1075,178 @@ const handleSizeChange = async (item: CartItem, newSize: string) => {
 
         {checkoutStep === 'payment' && (
           <div className="flex flex-col h-full">
-            <div className="flex-1 p-6">
-              <p>Resumen de compra...</p>
+            {/* Resumen completo de la compra - ALTURA AJUSTADA */}
+            <div className="flex-1 overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+              <div className="space-y-4"> {/* Reducido de space-y-6 a space-y-4 */}
+                {/* Título */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Resumen de tu pedido</h3>
+                  <p className="text-gray-300 text-sm">
+                    Revisa los detalles antes de proceder al pago
+                  </p>
+                </div>
+
+                {/* Lista de productos - COMPACTADA */}
+                <div className="space-y-2"> {/* Reducido spacing */}
+                  <h4 className="font-medium text-white text-sm">Productos ({itemCount} {itemCount === 1 ? 'artículo' : 'artículos'})</h4>
+                  <div className="space-y-2 bg-black/40 rounded-lg p-3 border border-white/10 max-h-32 overflow-y-auto"> {/* Altura máxima para productos */}
+                    {items.map((item) => {
+                      const displaySize = item.selectedSize && item.selectedSize.trim() && item.selectedSize !== 'undefined' 
+                        ? item.selectedSize.trim() 
+                        : '';
+
+                      return (
+                        <div key={item.cartItemId} className="flex gap-2 py-1 border-b border-white/5 last:border-b-0"> {/* Reducido gap y padding */}
+                          <img
+                            src={item.image || '/placeholder-product.jpg'}
+                            alt={item.name}
+                            className="w-10 h-10 object-cover rounded-md flex-shrink-0" // Imagen más pequeña
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/placeholder-product.jpg';
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white font-medium text-xs truncate">{item.name}</p>
+                            <div className="flex gap-1 mt-0.5">
+                              {displaySize && (
+                                <Badge variant="outline" className="text-xs px-1 py-0">
+                                  {displaySize}
+                                </Badge>
+                              )}
+                              <span className="text-gray-400 text-xs">
+                                x{item.quantity}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-primary font-medium text-xs">
+                              ${(item.price * item.quantity).toLocaleString("es-CO")}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Dirección de envío - COMPACTADA */}
+                {selectedAddress && (
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-white text-sm">Dirección de envío</h4>
+                    <div className="bg-black/40 rounded-lg p-3 border border-white/10">
+                      <div className="flex items-center gap-2 mb-1">
+                        <MapPin className="h-3 w-3 text-primary" />
+                        <span className="text-white font-medium text-xs">
+                          {selectedAddress.address_type.charAt(0).toUpperCase() + selectedAddress.address_type.slice(1)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-300">
+                        <p className="truncate">{selectedAddress.address_line_1}</p>
+                        <p className="truncate">
+                          {selectedAddress.city}, {selectedAddress.state}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Desglose de costos - COMPACTADO */}
+                <div className="space-y-2">
+                  <h4 className="font-medium text-white text-sm">Desglose de costos</h4>
+                  <div className="bg-black/40 rounded-lg p-3 border border-white/10 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300 text-sm">Subtotal</span>
+                      <span className="text-white font-medium text-sm">
+                        ${subtotal.toLocaleString("es-CO")}
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300 text-sm">Envío</span>
+                      <span className={`font-medium text-sm ${shipping === 0 ? 'text-green-400' : 'text-white'}`}>
+                        {shipping === 0 ? 'Gratis' : `$${shipping.toLocaleString("es-CO")}`}
+                      </span>
+                    </div>
+                    
+                    {subtotal >= SHIPPING_THRESHOLD && subtotal > 0 && (
+                      <p className="text-xs text-green-400">
+                        ¡Envío gratis por compra superior a ${SHIPPING_THRESHOLD.toLocaleString("es-CO")}!
+                      </p>
+                    )}
+
+                    <hr className="border-white/10" />
+                    
+                    <div className="flex justify-between items-center">
+                      <span className="text-base font-semibold text-white">Total</span>
+                      <span className="text-lg font-bold text-primary">
+                        ${total.toLocaleString("es-CO")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Método de pago - COMPACTADO */}
+                <div className="space-y-2">
+                  <h4 className="font-medium text-white text-sm">Método de pago</h4>
+                  <div className="bg-black/40 rounded-lg p-3 border border-white/10">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-5 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
+                        <span className="text-white font-bold text-xs">PP</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-white font-medium text-sm">PayPal</p>
+                        <p className="text-gray-400 text-xs">Pago seguro</p>
+                      </div>
+                      <Check className="h-3 w-3 text-green-400" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Información adicional - COMPACTADA */}
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-blue-300 font-medium text-xs">Información importante</p>
+                      <ul className="text-blue-100/80 text-xs mt-1 space-y-0.5">
+                        <li>• Procesado en 1-2 días hábiles</li>
+                        <li>• Código de seguimiento por email</li>
+                        <li>• 30 días para devoluciones</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="border-t border-white/20 p-6">
-              <Button
-                variant="hero"
-                className="w-full"
-                onClick={handleCheckout}
-                disabled={loadingCheckout}
-              >
-                {loadingCheckout ? 'Procesando...' : `Pagar ${total.toLocaleString("es-CO")}`}
-              </Button>
+            
+            {/* Botón de pago - FIJO EN LA PARTE INFERIOR */}
+            <div className="border-t border-white/20 p-4 bg-card/95 backdrop-blur-sm">
+              <div className="space-y-2">
+                <Button
+                  variant="hero"
+                  className="w-full h-12"
+                  onClick={handleCheckout}
+                  disabled={loadingCheckout}
+                >
+                  {loadingCheckout ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="text-sm">Procesando...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-4 w-4" />
+                      <span className="text-sm font-semibold">
+                        Pagar ${total.toLocaleString("es-CO")}
+                      </span>
+                    </div>
+                  )}
+                </Button>
+                
+                <p className="text-center text-xs text-gray-400">
+                  Al proceder, aceptas nuestros términos y condiciones
+                </p>
+              </div>
             </div>
           </div>
         )}
