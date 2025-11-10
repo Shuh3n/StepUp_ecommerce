@@ -286,7 +286,7 @@ const Tracking = () => {
           </Card>
 
           {/* Agregar consulta específica del paquete SP1206OQ6S */}
-          <PackageQuery />
+          
         </div>
 
         {/* Modal de tracking */}
