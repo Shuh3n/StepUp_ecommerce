@@ -28,7 +28,8 @@ import {
   Shield,
   AlertCircle,
   Mail,
-  AlertTriangle  // Agregamos este icono
+  AlertTriangle,
+  Truck
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import { supabase } from "../lib/supabase";
@@ -36,6 +37,7 @@ import { useNavigate } from "react-router-dom";
 import { removeFavorite } from "@/lib/api/favorites";
 import AddressManager from "@/components/AddressManager";
 import Cart from "@/components/Cart"; // Agregar import del Cart
+import TrackingModal from "@/components/TrackingModal"; // Agregar import
 
 const EDGE_DEACTIVATE_URL = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/deactivate-user";
 const EDGE_ORDERS_URL = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-user-orders";
@@ -77,7 +79,7 @@ interface FavoriteProduct {
   isNew?: boolean;
 }
 
-// Función para obtener el color del estado del pedido
+// Función para obtener el color del estado del pedido - ACTUALIZADA
 const getStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
     case 'pending':
@@ -86,12 +88,15 @@ const getStatusColor = (status: string) => {
     case 'processing':
     case 'procesando':
       return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+    case 'confirmed':
+    case 'confirmado': // CAMBIADO A VERDE
+      return 'bg-green-500/20 text-green-400 border-green-500/30';
     case 'shipped':
     case 'enviado':
       return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
     case 'delivered':
     case 'entregado':
-      return 'bg-green-500/20 text-green-400 border-green-500/30';
+      return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'; // Verde más oscuro para diferenciar de confirmado
     case 'cancelled':
     case 'cancelado':
       return 'bg-red-500/20 text-red-400 border-red-500/30';
@@ -228,6 +233,10 @@ const Profile = () => {
   // Estados para el carrito
   const [cartItems, setCartItems] = useState([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // Agregar estados para el modal de tracking
+  const [trackingModalOpen, setTrackingModalOpen] = useState(false);
+  const [selectedOrderForTracking, setSelectedOrderForTracking] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -902,6 +911,18 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
     console.log("Remove item:", id, selectedSize);
   };
 
+  // Función para abrir modal de tracking
+  const handleOpenTracking = (orderId: string) => {
+    setSelectedOrderForTracking(orderId);
+    setTrackingModalOpen(true);
+  };
+
+  // Función para cerrar modal de tracking
+  const handleCloseTracking = () => {
+    setTrackingModalOpen(false);
+    setSelectedOrderForTracking(null);
+  };
+
   if (loading) return (
     <div className="flex h-screen items-center justify-center">
       <Loader className="w-8 h-8 animate-spin text-primary" />
@@ -1318,18 +1339,39 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                                   </span>
                                 )}
                               </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setSelectedOrder(order);
-                                  setOrderModalOpen(true);
-                                }}
-                                className="flex items-center gap-1 text-white border-white/30 hover:bg-white/10"
-                              >
-                                <Eye className="h-4 w-4" />
-                                Ver Detalles
-                              </Button>
+                              
+                              {/* Botones de acción mejorados */}
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedOrder(order);
+                                    setOrderModalOpen(true);
+                                  }}
+                                  className="flex items-center gap-1 text-white border-white/30 hover:bg-white/10"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                  Ver Detalles
+                                </Button>
+                                
+                                {/* Botón de seguimiento - NUEVO */}
+                                {(order.status.toLowerCase() !== 'cancelado' && 
+                                  order.status.toLowerCase() !== 'cancelled' &&
+                                  order.payment_status.toLowerCase() !== 'pending' &&
+                                  order.payment_status.toLowerCase() !== 'pendiente') && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleOpenTracking(order.id)}
+                                    className="flex items-center gap-1 text-blue-400 border-blue-400/30 hover:bg-blue-400/10"
+                                  >
+                                    <Truck className="h-4 w-4" />
+                                    <span className="hidden sm:inline">Seguimiento</span>
+                                    <span className="sm:hidden">Track</span>
+                                  </Button>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </CardContent>
@@ -1705,6 +1747,13 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Modal de seguimiento - NUEVO */}
+        <TrackingModal
+          isOpen={trackingModalOpen}
+          onClose={handleCloseTracking}
+          orderId={selectedOrderForTracking || ''}
+        />
 
         {/* Componente Cart */}
         <Cart
