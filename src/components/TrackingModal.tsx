@@ -337,56 +337,69 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
               </h3>
               
               <div className="space-y-4">
-                {trackingData.events.map((event, index) => (
-                  <div key={index} className="flex gap-4">
-                    {/* Línea temporal */}
-                    <div className="flex flex-col items-center">
-                      <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center ${
-                        event.estimated 
-                          ? 'border-yellow-500/50 bg-yellow-500/10' 
-                          : 'border-primary/50 bg-primary/20'
-                      }`}>
-                        {getStatusIcon(event.status, event.estimated)}
+                {/* CAMBIAR EL ORDEN - EVENTOS MÁS RECIENTES ARRIBA */}
+                {[...trackingData.events].reverse().map((event, index) => {
+                  // Calcular el índice real para la línea temporal
+                  const totalEvents = trackingData.events.length;
+                  const isLastInTimeline = index === totalEvents - 1;
+                  
+                  return (
+                    <div key={`event-${totalEvents - index - 1}`} className="flex gap-4">
+                      {/* Línea temporal */}
+                      <div className="flex flex-col items-center">
+                        <div className={`w-10 h-10 rounded-full border-2 flex items-center justify-center ${
+                          event.estimated 
+                            ? 'border-yellow-500/50 bg-yellow-500/10' 
+                            : 'border-primary/50 bg-primary/20'
+                        }`}>
+                          {getStatusIcon(event.status, event.estimated)}
+                        </div>
+                        {!isLastInTimeline && (
+                          <div className={`w-0.5 h-12 ${
+                            event.estimated ? 'bg-yellow-500/30' : 'bg-primary/30'
+                          }`} />
+                        )}
                       </div>
-                      {index < trackingData.events.length - 1 && (
-                        <div className={`w-0.5 h-12 ${
-                          event.estimated ? 'bg-yellow-500/30' : 'bg-primary/30'
-                        }`} />
-                      )}
-                    </div>
 
-                    {/* Contenido del evento - ACTUALIZADO */}
-                    <div className="flex-1 pb-4">
-                      <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <Badge className={`${getStatusColor(event.status)} text-sm`}>
-                          {event.status}
-                          {event.estimated && " (Estimado)"}
-                        </Badge>
-                        <span className="text-white/60 text-sm">
-                          {event.estimated 
-                            ? format(new Date(event.timestamp), "dd/MM/yyyy HH:mm")
-                            : formatDistanceToNow(new Date(event.timestamp), { 
-                                addSuffix: true, 
-                                locale: es 
-                              })
-                          }
-                        </span>
-                      </div>
-                      
-                      <h4 className="text-white font-medium mb-1">{event.description}</h4>
-                      <p className="text-white/70 text-sm flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        {event.location}
-                      </p>
-                      
-                      {!event.estimated && (
-                        <p className="text-white/50 text-xs mt-1">
-                          {format(new Date(event.timestamp), "dd 'de' MMMM 'de' yyyy 'a las' HH:mm", { locale: es })}
+                      {/* Contenido del evento */}
+                      <div className="flex-1 pb-4">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <Badge className={`${getStatusColor(event.status)} text-sm`}>
+                            {event.status}
+                            {event.estimated && " (Estimado)"}
+                          </Badge>
+                          <span className="text-white/60 text-sm">
+                            {event.estimated 
+                              ? format(new Date(event.timestamp), "dd/MM/yyyy HH:mm")
+                              : formatDistanceToNow(new Date(event.timestamp), { 
+                                  addSuffix: true, 
+                                  locale: es 
+                                })
+                            }
+                          </span>
+                          {/* Badge para evento más reciente */}
+                          {index === 0 && !event.estimated && (
+                            <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">
+                              Más reciente
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <h4 className="text-white font-medium mb-1">{event.description}</h4>
+                        <p className="text-white/70 text-sm flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {event.location}
                         </p>
-                      )}
+                        
+                        {!event.estimated && (
+                          <p className="text-white/50 text-xs mt-1">
+                            {format(new Date(event.timestamp), "dd 'de' MMMM 'de' yyyy 'a las' HH:mm", { locale: es })}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
