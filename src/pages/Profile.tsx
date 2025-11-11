@@ -55,6 +55,7 @@ interface OrderItem {
 interface Order {
   id: string;
   status: string;
+  shipping_status?: string;
   total: number;
   address: string | null;
   phone: string | null;
@@ -67,7 +68,6 @@ interface Order {
   exchange_rate: number | null;
   total_usd: number | null;
 }
-
 interface FavoriteProduct {
   id: number;
   name: string;
@@ -127,6 +127,30 @@ const getPaymentStatusColor = (paymentStatus: string) => {
   }
 };
 
+// Función para obtener el color del estado de envío - NUEVA
+const getShippingStatusColor = (shippingStatus: string) => {
+  switch (shippingStatus.toLowerCase()) {
+    case 'sin procesar':
+      return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+    case 'preparando':
+      return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+    case 'listo para envío':
+      return 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30';
+    case 'en tránsito':
+      return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+    case 'en distribución':
+      return 'bg-orange-500/20 text-orange-400 border-orange-500/30';
+    case 'fuera para entrega':
+      return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    case 'entregado':
+      return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+    case 'cancelado':
+      return 'bg-red-500/20 text-red-400 border-red-500/30';
+    default:
+      return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  }
+};
+
 // Función para formatear fechas
 const formatDate = (dateString: string) => {
   try {
@@ -166,6 +190,7 @@ const showConfirmation = (setConfirmationModal: React.Dispatch<React.SetStateAct
     variant: options.variant || 'default'
   });
 };
+
 
 const Profile = () => {
   const { toast } = useToast();
@@ -1303,7 +1328,7 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                           <CardContent className="p-4">
                             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                               <div className="flex-1 space-y-3">
-                                {/* Fila 1: ID del pedido y badges de estado - SIMPLIFICADO */}
+                                {/* Fila 1: ID del pedido y badges de estado - ACTUALIZADO */}
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <span className="text-white font-medium">
                                     Pedido #{order.id.slice(-8)}
@@ -1312,8 +1337,14 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                                     {order.status}
                                   </Badge>
                                   <Badge className={`text-white ${getPaymentStatusColor(order.payment_status)}`}>
-                                    {order.payment_status}
+                                    💳 {order.payment_status}
                                   </Badge>
+                                  {/* 🔥 AGREGAR BADGE DE SHIPPING STATUS */}
+                                  {order.shipping_status && (
+                                    <Badge className={`text-white ${getShippingStatusColor(order.shipping_status)} border-dashed`}>
+                                      🚚 {order.shipping_status}
+                                    </Badge>
+                                  )}
                                 </div>
                                 
                                 {/* Fila 2: Información del pedido */}
@@ -1589,7 +1620,7 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
             
             {selectedOrder && (
               <div className="space-y-6">
-                {/* Estado y información general - SIMPLIFICADO */}
+                {/* Estado y información general - ACTUALIZADO CON SHIPPING STATUS */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-white/70">Estado del Pedido</Label>
@@ -1603,6 +1634,18 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                       {selectedOrder.payment_status}
                     </Badge>
                   </div>
+                  {/* 🔥 AGREGAR SHIPPING STATUS EN MODAL */}
+                  {selectedOrder.shipping_status && (
+                    <div className="space-y-2">
+                      <Label className="text-white/70 flex items-center gap-1">
+                        <Truck className="h-4 w-4" />
+                        Estado del Envío
+                      </Label>
+                      <Badge className={`text-white ${getShippingStatusColor(selectedOrder.shipping_status)}`}>
+                        {selectedOrder.shipping_status}
+                      </Badge>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <Label className="text-white/70">Fecha del Pedido</Label>
                     <p className="text-white">{formatDate(selectedOrder.created_at)}</p>

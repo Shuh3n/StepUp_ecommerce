@@ -34,6 +34,7 @@ interface TrackingData {
   trackingNumber: string;
   orderId: string;
   status: string;
+  shippingStatus?: string | null; 
   progress: number;
   estimatedDelivery?: string;
   origin: string;
@@ -223,7 +224,6 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Header con información general - ACTUALIZADO */}
           <Card className="bg-gradient-to-r from-primary/20 to-secondary/20 border-primary/30">
             <CardContent className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -233,12 +233,26 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
                     <p className="text-primary font-mono text-lg">{trackingData.trackingNumber}</p>
                   </div>
                   
-                  <div>
-                    <h3 className="text-white font-semibold mb-1">Estado del Pedido</h3>
-                    <Badge className={`${getStatusColor(trackingData.status)} font-medium`}>
-                      {trackingData.status}
-                    </Badge>
-                  </div>
+                    <div>
+                      <h3 className="text-white font-semibold mb-1">Estado del Pedido</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {/* Badge del estado general del pedido */}
+                        {trackingData.status && (
+                          <Badge className={`${getStatusColor(trackingData.status)} font-medium`}>
+                            📦 {trackingData.status}
+                          </Badge>
+                        )}
+                        
+                        {/* 🔥 MEJORAR LA VALIDACIÓN DEL SHIPPING STATUS */}
+                        {trackingData.shippingStatus && 
+                         trackingData.shippingStatus.trim() !== "" && 
+                         trackingData.shippingStatus !== "null" && (
+                          <Badge className={`${getStatusColor(trackingData.shippingStatus)} font-medium border-dashed`}>
+                            🚚 {trackingData.shippingStatus}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
                 </div>
 
                 <div className="space-y-3">
@@ -253,6 +267,16 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
                       </div>
                       <span className="text-white font-medium">{trackingData.progress}%</span>
                     </div>
+                    
+                    {/* 🔥 MEJORAR VALIDACIÓN DEL INDICADOR DE ESTADO */}
+                    {trackingData.shippingStatus && 
+                     trackingData.shippingStatus.trim() !== "" && 
+                     trackingData.shippingStatus !== "null" && (
+                      <p className="text-white/60 text-sm mt-1 flex items-center gap-1">
+                        <Truck className="h-3 w-3" />
+                        Estado actual: {trackingData.shippingStatus}
+                      </p>
+                    )}
                   </div>
 
                   {trackingData.estimatedDelivery && (
@@ -404,7 +428,7 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
             </CardContent>
           </Card>
 
-          {/* Información adicional */}
+          {/* Información adicional - ACTUALIZADA */}
           <Card className="bg-blue-500/10 border-blue-500/20">
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
@@ -415,6 +439,14 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
                     <li>• Las entregas se realizan de lunes a viernes de 8:00 AM a 6:00 PM</li>
                     <li>• Si no estás disponible, el paquete será reprogramado para el siguiente día hábil</li>
                     <li>• Recibirás una notificación cuando el paquete esté fuera para entrega</li>
+                    
+                    {/* 🔥 MEJORAR VALIDACIÓN EN INFORMACIÓN ADICIONAL */}
+                    {trackingData.shippingStatus && 
+                     trackingData.shippingStatus.trim() !== "" && 
+                     trackingData.shippingStatus !== "null" &&
+                     trackingData.shippingStatus.toLowerCase() !== 'entregado' && (
+                      <li>• <strong>Estado actual del envío:</strong> {trackingData.shippingStatus}</li>
+                    )}
                   </ul>
                 </div>
               </div>
