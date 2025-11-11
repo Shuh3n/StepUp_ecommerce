@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ShoppingBag, User, Menu, Heart, Mail, Home, Package, LogOut, ShoppingCart } from "lucide-react";
+import { ShoppingBag, User, Menu, Heart, Mail, Home, Package, LogOut, ShoppingCart, Truck } from "lucide-react";
 import { supabase } from '../lib/supabase';
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from '../context/AuthContext';
@@ -132,6 +132,11 @@ const Navbar = ({
                 <Package className="h-4 w-4" />
                 Productos
               </Link>
+              {/* NUEVO: Enlace de seguimiento */}
+              <Link to="/seguimiento" className="text-foreground hover:text-primary transition-all duration-300 hover:scale-105 story-link flex items-center gap-2">
+                <Truck className="h-4 w-4" />
+                Seguimiento
+              </Link>
               <button
                 type="button"
                 onClick={() => setIsContactModalOpen(true)}
@@ -206,6 +211,14 @@ const Navbar = ({
                 >
                   <Package className="h-4 w-4" />
                   Productos
+                </Link>
+                {/* NUEVO: Enlace de seguimiento móvil */}
+                <Link
+                  to="/seguimiento"
+                  className="block px-3 py-2 text-foreground hover:text-primary transition-all duration-300 hover:scale-105 flex items-center gap-2"
+                >
+                  <Truck className="h-4 w-4" />
+                  Seguimiento
                 </Link>
                 <button
                   type="button"

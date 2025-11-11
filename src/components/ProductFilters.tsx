@@ -5,30 +5,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Filter, X } from "lucide-react";
 
-// Nueva función para obtener categorías desde la Edge Function
-async function fetchCategories(): Promise<CategoryOption[]> {
-  try {
-    const res = await fetch("https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/get-categories");
-    const result = await res.json();
-    if (result.ok && Array.isArray(result.categories)) {
-      // Ahora cada categoría tiene id y name
-      return result.categories.map((cat: { id: string, name: string }) => ({
-        id: cat.id,
-        name: cat.name
-      }));
-    }
-    return [];
-  } catch (e) {
-    return [];
-  }
-}
-
 interface CategoryOption {
   id: string;
   name: string;
 }
+
 interface ProductFiltersProps {
-  categories?: CategoryOption[]; // Ahora puede ser opcional si lo vas a cargar aquí
+  categories?: CategoryOption[];
   selectedCategory: string;
   onCategoryChange: (category: string) => void;
   priceRange: [number, number];
@@ -44,7 +27,7 @@ interface ProductFiltersProps {
 }
 
 const ProductFilters = ({
-  categories: categoriesProp,
+  categories = [], // USAR LAS CATEGORÍAS PASADAS COMO PROP
   selectedCategory,
   onCategoryChange,
   priceRange,
@@ -55,27 +38,13 @@ const ProductFilters = ({
   onSizeChange,
   onClearFilters,
   maxPrice = 300000,
-  allCategoryId,
+  allCategoryId = "all",
   sizes: sizesProp,
 }: ProductFiltersProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [categories, setCategories] = useState<CategoryOption[]>(categoriesProp || []);
-  const [loadingCategories, setLoadingCategories] = useState(false);
 
   // Prefer DB-provided sizes; fallback to common list
-  const sizes = sizesProp && sizesProp.length > 0 ? sizesProp : [ "S", "M", "L", "XL" ];
-
-  useEffect(() => {
-    if (!categoriesProp || categoriesProp.length === 0) {
-      setLoadingCategories(true);
-      fetchCategories().then((cats) => {
-        setCategories(cats);
-        setLoadingCategories(false);
-      });
-    } else {
-      setCategories(categoriesProp);
-    }
-  }, [categoriesProp]);
+  const sizes = sizesProp && sizesProp.length > 0 ? sizesProp : ["S", "M", "L", "XL"];
 
   const handleSizeToggle = (size: string) => {
     const newSizes = selectedSizes.includes(size)
@@ -84,11 +53,26 @@ const ProductFilters = ({
     onSizeChange(newSizes);
   };
 
-  const defaultAllId = allCategoryId ?? "all";
-  const hasActiveFilters = selectedCategory !== defaultAllId || 
+  const hasActiveFilters = selectedCategory !== allCategoryId || 
                           priceRange[0] > 0 || 
                           priceRange[1] < maxPrice || 
                           selectedSizes.length > 0;
+
+  const handleClearAllFilters = () => {
+    onCategoryChange(allCategoryId);
+    onPriceRangeChange([0, maxPrice]);
+    onSizeChange([]);
+    onSortChange("newest");
+    if (onClearFilters) {
+      onClearFilters();
+    }
+  };
+
+  const handleCategoryChange = (categoryId: string) => {
+    console.log('🏷️ Categoría seleccionada:', categoryId);
+    console.log('📋 Categorías disponibles:', categories);
+    onCategoryChange(categoryId);
+  };
 
   return (
     <div className="space-y-6">
@@ -114,9 +98,19 @@ const ProductFilters = ({
 
       {/* Filters Panel */}
       <div className={`space-y-6 ${isOpen ? "block" : "hidden lg:block"}`}>
-        {/* Header */}
+        {/* Header with Clear All */}
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Filtros</h3>
+          {hasActiveFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClearAllFilters}
+              className="text-xs"
+            >
+              Limpiar todo
+            </Button>
+          )}
         </div>
 
         {/* Sort */}
@@ -138,14 +132,13 @@ const ProductFilters = ({
         {/* Categories */}
         <div className="space-y-3">
           <h4 className="font-medium">Categorías</h4>
-          <Select value={selectedCategory} onValueChange={onCategoryChange}>
+          <Select value={selectedCategory} onValueChange={handleCategoryChange}>
             <SelectTrigger className="rounded-xl glass border-white/20">
               <SelectValue placeholder="Seleccionar categoría" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todas</SelectItem>
-              {loadingCategories ? (
-                <SelectItem value="" disabled>Cargando...</SelectItem>
+              {categories.length === 0 ? (
+                <SelectItem value="no-categories" disabled>No hay categorías disponibles</SelectItem>
               ) : (
                 categories.map(cat => (
                   <SelectItem key={cat.id} value={cat.id}>
@@ -155,6 +148,21 @@ const ProductFilters = ({
               )}
             </SelectContent>
           </Select>
+          {selectedCategory !== allCategoryId && (
+            <div className="flex justify-between items-center text-xs text-muted-foreground">
+              <span>
+                Filtrando por: {categories.find(c => c.id === selectedCategory)?.name || 'Categoría'}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onCategoryChange(allCategoryId)}
+                className="text-xs h-6"
+              >
+                Quitar
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Price Range */}
@@ -166,7 +174,7 @@ const ProductFilters = ({
               onValueChange={onPriceRangeChange}
               min={0}
               max={maxPrice}
-              step={Math.max(1000, Math.round(maxPrice / 20))}
+              step={Math.max(1000, Math.round(maxPrice / 50))}
               className="w-full"
             />
           </div>
@@ -174,63 +182,53 @@ const ProductFilters = ({
             <span>${priceRange[0].toLocaleString()}</span>
             <span>${priceRange[1].toLocaleString()}</span>
           </div>
-          <div className="flex justify-end">
-            {(priceRange[0] > 0 || priceRange[1] < maxPrice) && (
+          {(priceRange[0] > 0 || priceRange[1] < maxPrice) && (
+            <div className="flex justify-end">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => onPriceRangeChange([0, maxPrice])}
-                className="text-xs"
+                className="text-xs h-6"
               >
                 Limpiar rango
               </Button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Sizes */}
         <div className="space-y-3">
           <h4 className="font-medium">Tallas</h4>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {sizes.map((size, idx) => (
-              <div key={size + idx} className="flex items-center space-x-2">
+              <div key={`${size}-${idx}`} className="flex items-center space-x-2">
                 <Checkbox
-                  id={size}
+                  id={`size-${size}-${idx}`}
                   checked={selectedSizes.includes(size)}
                   onCheckedChange={() => handleSizeToggle(size)}
                 />
                 <label
-                  htmlFor={size}
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  htmlFor={`size-${size}-${idx}`}
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                 >
                   {size}
                 </label>
               </div>
             ))}
           </div>
-        </div>
-
-        {/* Color Filter */}
-        <div className="space-y-3">
-          <h4 className="font-medium">Colores</h4>
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { name: "Negro", color: "bg-black" },
-              { name: "Blanco", color: "bg-white border border-gray-300" },
-              { name: "Turquesa", color: "bg-primary" },
-              { name: "Coral", color: "bg-secondary" },
-              { name: "Azul", color: "bg-blue-500" },
-              { name: "Verde", color: "bg-green-500" },
-              { name: "Rosa", color: "bg-pink-500" },
-              { name: "Gris", color: "bg-gray-500" },
-            ].map(({ name, color }) => (
-              <button
-                key={name}
-                className={`w-8 h-8 rounded-full ${color} border-2 border-transparent hover:border-primary transition-all`}
-                title={name}
-              />
-            ))}
-          </div>
+          {selectedSizes.length > 0 && (
+            <div className="flex justify-between items-center text-xs text-muted-foreground">
+              <span>{selectedSizes.length} talla(s) seleccionada(s)</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onSizeChange([])}
+                className="text-xs h-6"
+              >
+                Limpiar
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>
