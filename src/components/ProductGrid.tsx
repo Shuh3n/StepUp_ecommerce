@@ -10,6 +10,9 @@ import product3 from "@/assets/product-3.jpg";
 interface ProductGridProps {
   products: Product[];
   onAddToCart: (product: Product) => void;
+  favorites?: number[];
+  onFavoriteChange?: () => void;
+  onProductClick?: (product: Product) => void;
 }
 
 interface Product {
@@ -19,9 +22,18 @@ interface Product {
   image_url?: string;
   image?: string;
   category: string;
+  description?: string;
+  created_at?: string;
+  variants?: any[];
 }
 
-const ProductGrid = ({ products, onAddToCart }: ProductGridProps) => {
+const ProductGrid = ({ 
+  products, 
+  onAddToCart, 
+  favorites = [],
+  onFavoriteChange,
+  onProductClick 
+}: ProductGridProps) => {
   return (
     <div className="w-full flex justify-center">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 max-w-7xl">
@@ -32,11 +44,19 @@ const ProductGrid = ({ products, onAddToCart }: ProductGridProps) => {
             style={{ animationDelay: `${index * 0.1}s` }}
           >
             <ProductCard
-            onClick={function (): void {
-              throw new Error("Function not implemented.");
-            } } isFavorite={false} {...product}
-            image={product.image_url || product.image}
-            onAddToCart={() => onAddToCart(product)}            />
+              {...product}
+              image={product.image_url || product.image}
+              isFavorite={favorites.includes(product.id)}
+              onAddToCart={() => onAddToCart(product)}
+              onClick={() => {
+                if (onProductClick) {
+                  onProductClick(product);
+                } else {
+                  console.log('Product clicked:', product.name);
+                }
+              }}
+              onFavoriteChange={onFavoriteChange}
+            />
           </div>
         ))}
       </div>

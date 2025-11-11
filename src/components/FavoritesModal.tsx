@@ -115,8 +115,17 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: Fav
       const ok = await removeFavorite(productId);
       if (ok) {
         toast({ title: "Eliminado de favoritos", description: "El producto ha sido removido de tus favoritos." });
+        // Actualizar localmente para UI inmediata del modal
         setFavoritesRaw(prev => prev.filter(fav => fav.product_id !== productId));
+        // Notificar al componente padre para que refresque el ProductGrid
         if (onFavoritesChange) onFavoritesChange();
+        // Refrescar el grid o la página de productos si existe el objeto window
+        if (typeof window !== "undefined") {
+          // Si estás en la página de productos, recarga la página
+          if (window.location.pathname.includes("/productos")) {
+            window.location.reload();
+          }
+        }
       } else {
         toast({ title: "Error", description: "No se pudo eliminar de favoritos." });
       }
@@ -207,14 +216,15 @@ const FavoritesModal = ({ isOpen, onClose, onAddToCart, onFavoritesChange }: Fav
                       )}
                     </div>
 
-                    {/* Remove from favorites */}
+                    {/* Remove from favorites - Botón más visible */}
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-3 right-3 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white"
+                      variant="destructive"
+                      size="sm"
+                      className="absolute top-3 right-3 rounded-lg bg-red-500/90 hover:bg-red-600 text-white shadow-lg backdrop-blur-sm transition-all duration-200 hover:scale-105"
                       onClick={() => handleRemoveFavorite(product.id)}
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      Eliminar
                     </Button>
                   </div>
 
