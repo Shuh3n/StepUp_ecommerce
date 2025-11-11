@@ -497,7 +497,7 @@ const AddressManager: React.FC<AddressManagerProps> = ({
                     key={address.id}
                     className={`p-4 rounded-lg border cursor-pointer transition-all ${
                       (mode === 'select' && selectedAddressId === address.id) ||
-                      (mode === 'edit' && editingAddress?.id === address.id)
+                      (editingAddress?.id === address.id)
                         ? 'border-primary bg-primary/10'
                         : 'border-white/20 bg-black/60 hover:bg-black/80'
                     } ${!compact ? 'mb-4' : 'mb-3'}`}

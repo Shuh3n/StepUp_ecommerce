@@ -132,37 +132,46 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
     }
   };
 
-  // Función para obtener el color del estado - ACTUALIZADA
+  // Función para obtener el color del estado - ACTUALIZADA para usar estados originales
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'confirmado':
       case 'confirmed':
-        return 'text-green-400 bg-green-500/10';
+        return 'text-green-400 bg-green-500/10 border border-green-500/20';
       case 'preparando':
       case 'preparing':
-        return 'text-blue-400 bg-blue-500/10';
+        return 'text-blue-400 bg-blue-500/10 border border-blue-500/20';
+      case 'pendiente':
+      case 'pending':
+        return 'text-yellow-400 bg-yellow-500/10 border border-yellow-500/20';
+      case 'procesando':
+      case 'processing':
+        return 'text-blue-400 bg-blue-500/10 border border-blue-500/20';
       case 'listo para envío':
       case 'ready to ship':
-        return 'text-indigo-400 bg-indigo-500/10';
+        return 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20';
       case 'enviado':
       case 'shipped':
       case 'en tránsito':
       case 'in transit':
-        return 'text-purple-400 bg-purple-500/10';
+        return 'text-purple-400 bg-purple-500/10 border border-purple-500/20';
       case 'en distribución':
       case 'in distribution':
-        return 'text-orange-400 bg-orange-500/10';
+        return 'text-orange-400 bg-orange-500/10 border border-orange-500/20';
       case 'fuera para entrega':
       case 'out for delivery':
-        return 'text-yellow-400 bg-yellow-500/10';
+        return 'text-yellow-400 bg-yellow-500/10 border border-yellow-500/20';
       case 'entregado':
       case 'delivered':
-        return 'text-emerald-400 bg-emerald-500/10';
+        return 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20';
+      case 'cancelado':
+      case 'cancelled':
+        return 'text-red-400 bg-red-500/10 border border-red-500/20';
       case 'entrega estimada':
       case 'estimated delivery':
-        return 'text-gray-400 bg-gray-500/10';
+        return 'text-gray-400 bg-gray-500/10 border border-gray-500/20';
       default:
-        return 'text-gray-400 bg-gray-500/10';
+        return 'text-gray-400 bg-gray-500/10 border border-gray-500/20';
     }
   };
 
@@ -214,7 +223,7 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
         </DialogHeader>
 
         <div className="space-y-6">
-          {/* Header con información general */}
+          {/* Header con información general - ACTUALIZADO */}
           <Card className="bg-gradient-to-r from-primary/20 to-secondary/20 border-primary/30">
             <CardContent className="p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -225,8 +234,8 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
                   </div>
                   
                   <div>
-                    <h3 className="text-white font-semibold mb-1">Estado Actual</h3>
-                    <Badge className={`${getStatusColor(trackingData.status, false)} font-medium`}>
+                    <h3 className="text-white font-semibold mb-1">Estado del Pedido</h3>
+                    <Badge className={`${getStatusColor(trackingData.status)} font-medium`}>
                       {trackingData.status}
                     </Badge>
                   </div>
@@ -346,10 +355,10 @@ const TrackingModal: React.FC<TrackingModalProps> = ({ isOpen, onClose, orderId 
                       )}
                     </div>
 
-                    {/* Contenido del evento */}
+                    {/* Contenido del evento - ACTUALIZADO */}
                     <div className="flex-1 pb-4">
                       <div className="flex flex-wrap items-center gap-2 mb-2">
-                        <Badge className={`${getStatusColor(event.status, event.estimated)} text-sm`}>
+                        <Badge className={`${getStatusColor(event.status)} text-sm`}>
                           {event.status}
                           {event.estimated && " (Estimado)"}
                         </Badge>

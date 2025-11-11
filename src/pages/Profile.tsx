@@ -1297,86 +1297,109 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {orders.map((order) => (
-                      <Card key={order.id} className="bg-white/10 border-white/20">
-                        <CardContent className="p-4">
-                          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                            <div className="flex-1 space-y-2">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-white font-medium">
-                                  Pedido #{order.id.slice(-8)}
-                                </span>
-                                <Badge className={`text-white ${getStatusColor(order.status)}`}>
-                                  {order.status}
-                                </Badge>
-                                <Badge className={`text-white ${getPaymentStatusColor(order.payment_status)}`}>
-                                  {order.payment_status}
-                                </Badge>
-                              </div>
-                              
-                              <div className="flex items-center gap-4 text-sm text-white/70">
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="h-4 w-4" />
-                                  {formatDate(order.created_at)}
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <CreditCard className="h-4 w-4" />
-                                  {order.payment_method}
-                                </div>
-                              </div>
-                              
-                              <div className="text-white/70 text-sm">
-                                {order.items.length} artículo{order.items.length !== 1 ? 's' : ''}
-                              </div>
-                            </div>
-                            
-                            <div className="flex flex-col md:items-end gap-2">
-                              <div className="text-white font-bold text-lg">
-                                ${order.total.toLocaleString()}
-                                {order.total_usd && (
-                                  <span className="text-sm text-white/70 ml-2">
-                                    (USD ${order.total_usd})
+                    {orders.map((order) => {
+                      return (
+                        <Card key={order.id} className="bg-white/10 border-white/20">
+                          <CardContent className="p-4">
+                            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                              <div className="flex-1 space-y-3">
+                                {/* Fila 1: ID del pedido y badges de estado - SIMPLIFICADO */}
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-white font-medium">
+                                    Pedido #{order.id.slice(-8)}
                                   </span>
-                                )}
+                                  <Badge className={`text-white ${getStatusColor(order.status)}`}>
+                                    {order.status}
+                                  </Badge>
+                                  <Badge className={`text-white ${getPaymentStatusColor(order.payment_status)}`}>
+                                    {order.payment_status}
+                                  </Badge>
+                                </div>
+                                
+                                {/* Fila 2: Información del pedido */}
+                                <div className="flex items-center gap-4 text-sm text-white/70 flex-wrap">
+                                  <div className="flex items-center gap-1">
+                                    <Calendar className="h-4 w-4" />
+                                    {formatDate(order.created_at)}
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <CreditCard className="h-4 w-4" />
+                                    {order.payment_method}
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <Package className="h-4 w-4" />
+                                    {order.items.length} artículo{order.items.length !== 1 ? 's' : ''}
+                                  </div>
+                                </div>
+                                
+                                {/* Fila 3: Preview de productos con tallas */}
+                                <div className="flex items-center gap-2 text-xs text-white/60">
+                                  {order.items.slice(0, 2).map((item, index) => (
+                                    <div key={index} className="flex items-center gap-1">
+                                      <span className="truncate max-w-32">{item.name}</span>
+                                      {item.size && (
+                                        <Badge variant="outline" className="text-xs px-1 py-0 border-white/20 text-white/50">
+                                          {item.size}
+                                        </Badge>
+                                      )}
+                                      {index < Math.min(order.items.length, 2) - 1 && (
+                                        <span className="text-white/30">•</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {order.items.length > 2 && (
+                                    <span className="text-white/40">
+                                      +{order.items.length - 2} más
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               
-                              {/* Botones de acción mejorados */}
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    setSelectedOrder(order);
-                                    setOrderModalOpen(true);
-                                  }}
-                                  className="flex items-center gap-1 text-white border-white/30 hover:bg-white/10"
-                                >
-                                  <Eye className="h-4 w-4" />
-                                  Ver Detalles
-                                </Button>
+                              <div className="flex flex-col md:items-end gap-2">
+                                <div className="text-white font-bold text-lg">
+                                  ${order.total.toLocaleString()}
+                                  {order.total_usd && (
+                                    <span className="text-sm text-white/70 ml-2">
+                                      (USD ${order.total_usd})
+                                    </span>
+                                  )}
+                                </div>
                                 
-                                {/* Botón de seguimiento - NUEVO */}
-                                {(order.status.toLowerCase() !== 'cancelado' && 
-                                  order.status.toLowerCase() !== 'cancelled' &&
-                                  order.payment_status.toLowerCase() !== 'pending' &&
-                                  order.payment_status.toLowerCase() !== 'pendiente') && (
+                                {/* Botones de acción - SIMPLIFICADO */}
+                                <div className="flex gap-2">
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => handleOpenTracking(order.id)}
-                                    className="flex items-center gap-1 text-blue-400 border-blue-400/30 hover:bg-blue-400/10"
+                                    onClick={() => {
+                                      setSelectedOrder(order);
+                                      setOrderModalOpen(true);
+                                    }}
+                                    className="flex items-center gap-1 text-white border-white/30 hover:bg-white/10"
                                   >
-                                    <Truck className="h-4 w-4" />
-                                    <span className="hidden sm:inline">Seguimiento</span>
-                                    <span className="sm:hidden">Track</span>
+                                    <Eye className="h-4 w-4" />
+                                    Ver Detalles
                                   </Button>
-                                )}
+                                  
+                                  {/* Botón de seguimiento - Solo si el pago está completado */}
+                                  {!['pending', 'pendiente', 'failed', 'fallido'].includes(order.payment_status.toLowerCase()) && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleOpenTracking(order.id)}
+                                      className="flex items-center gap-1 text-blue-400 border-blue-400/30 hover:bg-blue-400/10"
+                                    >
+                                      <Truck className="h-4 w-4" />
+                                      <span className="hidden sm:inline">Seguimiento</span>
+                                      <span className="sm:hidden">Track</span>
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
 
                     {/* Controles de paginación */}
                     <PaginationControls />
@@ -1554,7 +1577,7 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
           </TabsContent>
         </Tabs>
 
-        {/* Modal de detalles del pedido */}
+        {/* Modal de detalles del pedido - ACTUALIZADO */}
         <Dialog open={orderModalOpen} onOpenChange={setOrderModalOpen}>
           <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-card/95 backdrop-blur-md border border-white/20">
             <DialogHeader>
@@ -1566,7 +1589,7 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
             
             {selectedOrder && (
               <div className="space-y-6">
-                {/* Estado y información general */}
+                {/* Estado y información general - SIMPLIFICADO */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-white/70">Estado del Pedido</Label>
@@ -1611,7 +1634,7 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                   </div>
                 )}
 
-                {/* Productos del pedido - ACTUALIZADO para mostrar tallas */}
+                {/* Productos del pedido - MEJORADO CON TALLAS */}
                 <div className="space-y-4">
                   <Label className="text-white/70">Productos</Label>
                   <div className="space-y-3">
@@ -1638,36 +1661,35 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                                 </div>
                               )}
                             </div>
-                            <div className="flex-1 space-y-2">
+                            <div className="flex-1 space-y-3">
                               <h4 className="text-white font-medium">{item.name}</h4>
                               
-                              {/* Información de talla y cantidad */}
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-white/70 text-sm">
-                                  <span className="font-medium">Cantidad:</span> {item.quantity}
+                              {/* Información de cantidad y talla - MEJORADO */}
+                              <div className="flex flex-wrap items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className="text-xs border-green-400/50 text-green-300">
+                                    <Package className="h-3 w-3 mr-1" />
+                                    Cantidad: {item.quantity}
+                                  </Badge>
                                 </div>
                                 
-                                {item.size && (
-                                  <div className="text-white/70 text-sm">
-                                    <span className="font-medium">•</span>
+                                {item.size && item.size.trim() && item.size !== 'undefined' && (
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-xs border-blue-400/50 text-blue-300">
+                                      <span className="mr-1">👕</span>
+                                      Talla: {item.size.trim()}
+                                    </Badge>
                                   </div>
-                                )}
-                                
-                                {item.size && (
-                                  <Badge variant="outline" className="text-xs border-blue-400/50 text-blue-300">
-                                    <div className="flex items-center gap-1">
-                                      <span className="text-xs">👕</span>
-                                      <span>Talla {item.size}</span>
-                                    </div>
-                                  </Badge>
                                 )}
                               </div>
                               
-                              <div className="text-white/70 text-sm">
-                                <span className="font-medium">Precio unitario:</span> ${item.price.toLocaleString()}
+                              <div className="flex items-center justify-between">
+                                <div className="text-white/70 text-sm">
+                                  <span className="font-medium">Precio unitario:</span> ${item.price.toLocaleString()}
+                                </div>
                               </div>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right space-y-1">
                               <div className="text-white font-bold text-lg">
                                 ${(item.price * item.quantity).toLocaleString()}
                               </div>
@@ -1707,6 +1729,23 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                     )}
                   </div>
                 </div>
+
+                {/* Botón de seguimiento en el modal - SIMPLIFICADO */}
+                {!['pending', 'pendiente', 'failed', 'fallido'].includes(selectedOrder.payment_status.toLowerCase()) && (
+                  <div className="flex justify-center pt-4 border-t border-white/20">
+                    <Button
+                      onClick={() => {
+                        setOrderModalOpen(false);
+                        handleOpenTracking(selectedOrder.id);
+                      }}
+                      variant="outline"
+                      className="flex items-center gap-2 text-blue-400 border-blue-400/30 hover:bg-blue-400/10"
+                    >
+                      <Truck className="h-4 w-4" />
+                      Ver Seguimiento del Pedido
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </DialogContent>
