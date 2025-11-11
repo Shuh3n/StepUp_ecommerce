@@ -418,3 +418,199 @@ All colors MUST be HSL.
     display: inline;
   }
 }
+
+/* 🔥 SCROLLBAR PERSONALIZADO - OSCURO Y MINIMALISTA */
+:root {
+  /* Variables para el scrollbar */
+  --scrollbar-width: 6px;
+  --scrollbar-track: rgba(0, 0, 0, 0.1);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.15);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.35);
+}
+
+/* Scrollbar para navegadores WebKit (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: var(--scrollbar-width);
+  height: var(--scrollbar-width);
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-active);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+
+/* Scrollbar para Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+/* Estilos específicos para áreas de contenido principal */
+html, body {
+  scrollbar-gutter: stable;
+}
+
+/* 🔥 SCROLLBAR PARA MODALES Y DIALOG CONTENT */
+.dialog-content-scrollbar::-webkit-scrollbar,
+[data-radix-scroll-area-viewport]::-webkit-scrollbar,
+.modal-content::-webkit-scrollbar,
+.overflow-y-auto::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dialog-content-scrollbar::-webkit-scrollbar-track,
+[data-radix-scroll-area-viewport]::-webkit-scrollbar-track,
+.modal-content::-webkit-scrollbar-track,
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 2px;
+}
+
+.dialog-content-scrollbar::-webkit-scrollbar-thumb,
+[data-radix-scroll-area-viewport]::-webkit-scrollbar-thumb,
+.modal-content::-webkit-scrollbar-thumb,
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  transition: background-color 0.2s ease;
+}
+
+.dialog-content-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-radix-scroll-area-viewport]::-webkit-scrollbar-thumb:hover,
+.modal-content::-webkit-scrollbar-thumb:hover,
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 🔥 SCROLLBAR ULTRAMINIMALISTA PARA COMPONENTES ESPECÍFICOS */
+.minimal-scrollbar::-webkit-scrollbar {
+  width: 2px;
+  height: 2px;
+}
+
+.minimal-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.minimal-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 1px;
+}
+
+.minimal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* 🔥 SCROLLBAR PARA TABLAS Y GRIDS */
+.table-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.table-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+.table-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.table-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 🔥 ANIMACIONES SUAVES PARA SCROLL */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Ocultar scrollbar pero mantener funcionalidad (para casos específicos) */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* 🔥 SCROLLBAR PARA INPUTS Y TEXTAREAS */
+textarea::-webkit-scrollbar,
+.scroll-area::-webkit-scrollbar {
+  width: 4px;
+}
+
+textarea::-webkit-scrollbar-track,
+.scroll-area::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+}
+
+textarea::-webkit-scrollbar-thumb,
+.scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+textarea::-webkit-scrollbar-thumb:hover,
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* 🔥 TEMA CLARO - SCROLLBAR ADAPTATIVO */
+@media (prefers-color-scheme: light) {
+  :root {
+    --scrollbar-track: rgba(0, 0, 0, 0.05);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.25);
+    --scrollbar-thumb-active: rgba(0, 0, 0, 0.35);
+  }
+}
+
+/* 🔥 RESPONSIVE SCROLLBAR */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+  
+  .dialog-content-scrollbar::-webkit-scrollbar,
+  .modal-content::-webkit-scrollbar,
+  .overflow-y-auto::-webkit-scrollbar {
+    width: 2px;
+  }
+}
+
+/* 🔥 SCROLLBAR PARA TOUCH DEVICES */
+@media (hover: none) and (pointer: coarse) {
+  ::-webkit-scrollbar {
+    width: 2px;
+    height: 2px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}

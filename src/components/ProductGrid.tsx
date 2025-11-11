@@ -32,10 +32,11 @@ const ProductGrid = ({ products, onAddToCart }: ProductGridProps) => {
             style={{ animationDelay: `${index * 0.1}s` }}
           >
             <ProductCard
-              {...product}
-              image={product.image_url || product.image}
-              onAddToCart={() => onAddToCart(product)}
-            />
+            onClick={function (): void {
+              throw new Error("Function not implemented.");
+            } } isFavorite={false} {...product}
+            image={product.image_url || product.image}
+            onAddToCart={() => onAddToCart(product)}            />
           </div>
         ))}
       </div>
