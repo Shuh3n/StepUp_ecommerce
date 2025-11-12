@@ -13,36 +13,19 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Verificar si el usuario tiene un perfil completo en nuestra base de datos
-  const checkUserProfileExists = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('auth_id')
-        .eq('auth_id', userId)
-        .maybeSingle();
-
-      if (error) {
-        console.error('Error verificando existencia de perfil de usuario:', error);
-        return false;
-      }
-
-      return !!data;
-    } catch (error) {
-      console.error('Excepción verificando existencia de perfil de usuario:', error);
-      return false;
-    }
-  };
-
-  // Manejar la redirección después del login exitoso
+  // Manejar la redirección después del login exitoso - CORREGIDO
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user) {
+          setIsLoading(true);
           try {
+            console.log('[LOGIN] session.user.id:', session.user.id, typeof session.user.id);
+            
             // Verificar si el usuario existe en admins primero
             const { data: adminData, error: adminError } = await supabase
               .from('admins')
@@ -50,99 +33,173 @@ const Login = () => {
               .eq('auth_id', session.user.id)
               .maybeSingle();
 
-            console.log('[LOGIN] session.user.id:', session.user.id, typeof session.user.id);
-            console.log('[LOGIN] Resultado consulta admins:', adminData, typeof adminData?.auth_id);
-            if (adminData) {
-              console.log('[LOGIN] Comparando:', adminData.auth_id, '===', session.user.id, adminData.auth_id === session.user.id);
-            }
-            if (adminError) {
-              console.error('[LOGIN] Error buscando usuario en admins:', adminError);
+            console.log('[LOGIN] Resultado consulta admins:', adminData, adminError?.code);
+
+            if (adminError && adminError.code !== 'PGRST116') {
+              console.error('[LOGIN] ❌ Error buscando usuario en admins:', adminError);
             }
 
+            // Si es admin, redirigir a admin
             if (adminData && adminData.auth_id === session.user.id) {
-              console.log('[LOGIN] Usuario detectado como admin, redirigiendo a /admin');
+              console.log('[LOGIN] ✅ Usuario es admin, redirigiendo a /admin');
               navigate('/admin');
+              setIsLoading(false);
               return;
-            } else {
-              console.log('[LOGIN] Usuario NO es admin, comprobando en users...');
             }
+
+            console.log('[LOGIN] Usuario NO es admin, comprobando en users...');
 
             // Si no es admin, verificar si existe en users
             const { data: userData, error: userError } = await supabase
               .from('users')
-              .select('auth_id, estado')
+              .select('auth_id, estado, full_name, email, login_count')
               .eq('auth_id', session.user.id)
               .maybeSingle();
 
-            if (userError) {
-              console.error('[LOGIN] Error buscando usuario en users:', userError);
-              navigate('/complete-profile');
+            console.log('[LOGIN] Resultado consulta users:', userData, userError?.code);
+
+            if (userError && userError.code !== 'PGRST116') {
+              console.error('[LOGIN] ❌ Error buscando usuario en users:', userError);
+              toast({
+                title: "Error de sistema",
+                description: "Error al verificar los datos del usuario. Intenta nuevamente.",
+                variant: "destructive",
+              });
+              await supabase.auth.signOut();
+              setIsLoading(false);
               return;
             }
 
-            if (userData) {
-              // Si estado es false, bloquea el acceso
-              if (userData.estado !== true) {
-                await supabase.auth.signOut();
-                toast({
-                  title: "Cuenta inhabilitada",
-                  description: "Tu cuenta se encuentra inhabilitada o no tienes perfil. Por favor contacta soporte.",
-                  variant: "destructive",
-                  duration: 8000,
-                });
-                return;
-              }
-              navigate('/profile');
-            } else {
-              // Si no existe en users, bloquea también
+            // Si el usuario no existe en la tabla users
+            if (!userData) {
+              console.log('[LOGIN] ⚠️ Usuario no encontrado en tabla users, redirigiendo a completar perfil');
+              navigate('/complete-profile');
+              setIsLoading(false);
+              return;
+            }
+
+            // Verificar el estado del usuario - CORREGIDO
+            console.log('[LOGIN] 🔍 Verificando estado usuario:', {
+              estado: userData.estado,
+              tipoEstado: typeof userData.estado,
+              esTrue: userData.estado === true,
+              esString: userData.estado === 'true'
+            });
+
+            // Verificación más robusta del estado
+            const estadoActivo = userData.estado === true || userData.estado === 'true' || userData.estado === 1;
+            
+            if (!estadoActivo) {
+              console.log('[LOGIN] 🚫 Usuario con cuenta inhabilitada');
               await supabase.auth.signOut();
               toast({
                 title: "Cuenta inhabilitada",
-                description: "Tu cuenta se encuentra inhabilitada o no tienes perfil. Por favor contacta soporte.",
+                description: "Tu cuenta se encuentra inhabilitada. Por favor contacta soporte.",
                 variant: "destructive",
                 duration: 8000,
               });
+              setIsLoading(false);
               return;
             }
+
+            console.log('[LOGIN] ✅ Usuario verificado exitosamente, redirigiendo a perfil');
+            
+            // Actualizar last_login
+            const { error: updateError } = await supabase
+              .from('users')
+              .update({ 
+                last_login: new Date().toISOString(),
+                login_count: (userData.login_count || 0) + 1
+              })
+              .eq('auth_id', session.user.id);
+
+            if (updateError) {
+              console.warn('[LOGIN] ⚠️ No se pudo actualizar last_login:', updateError);
+            }
+
+            toast({
+              title: "✅ Inicio de sesión exitoso",
+              description: `Bienvenido ${userData.full_name || userData.email}`,
+              variant: "default",
+            });
+
+            navigate('/profile');
+
           } catch (error) {
-            console.error('Error manejando cambios de estado de auth:', error);
-            navigate('/complete-profile');
+            console.error('[LOGIN] 💥 Error manejando cambios de estado de auth:', error);
+            toast({
+              title: "Error inesperado",
+              description: "Ocurrió un error al procesar el inicio de sesión.",
+              variant: "destructive",
+            });
+            await supabase.auth.signOut();
+          } finally {
+            setIsLoading(false);
           }
         }
       }
     );
 
     return () => subscription.unsubscribe();
-  }, [navigate]);
+  }, [navigate, toast]);
 
+  // Función para manejar el envío del formulario
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // Evitar que la página se recargue
+    
+    // Validaciones básicas
+    if (!email.trim() || !password.trim()) {
+      toast({
+        title: "Campos requeridos",
+        description: "Por favor ingresa email y contraseña.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
     
     try {
+      console.log('[LOGIN] 🔐 Intentando iniciar sesión con:', email);
+      
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
+        email: email.trim(),
+        password: password
       });
 
       if (error) throw error;
 
+      console.log('[LOGIN] ✅ Autenticación exitosa:', data.user?.id);
       // El redireccionamiento se manejará automáticamente en el useEffect
-      // a través del listener onAuthStateChange
-
+      
     } catch (error) {
-      console.error('Error iniciando sesión:', error);
+      console.error('[LOGIN] ❌ Error iniciando sesión:', error);
+      setIsLoading(false);
+      
       const raw = error instanceof Error ? error.message : String(error);
       const message = translateAuthError(raw) || 'No se pudo iniciar sesión. Intenta nuevamente.';
+      
       toast({
-        title: "Error",
+        title: "Error de autenticación",
         description: message,
         variant: "destructive",
       });
     }
   };
 
+  // Función adicional para manejar Enter en campos específicos
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !isLoading && email.trim() && password.trim()) {
+      e.preventDefault();
+      handleSubmit(e as any);
+    }
+  };
+
   const handleGoogleLogin = async () => {
+    setIsLoading(true);
     try {
+      console.log('[LOGIN] 🌐 Iniciando sesión con Google...');
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -152,18 +209,19 @@ const Login = () => {
       
       if (error) throw error;
     } catch (error) {
-      console.error('Error iniciando sesión con Google:', error);
+      console.error('[LOGIN] ❌ Error iniciando sesión con Google:', error);
+      setIsLoading(false);
+      
       const raw = error instanceof Error ? error.message : String(error);
       const message = translateAuthError(raw) || 'No se pudo iniciar sesión con Google. Intenta nuevamente.';
+      
       toast({
-        title: "Error",
+        title: "Error de autenticación",
         description: message,
         variant: "destructive",
       });
     }
   };
-
-  // translateAuthError ahora se importa desde src/lib/authErrors.ts
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">
@@ -179,6 +237,7 @@ const Login = () => {
           variant="ghost"
           className="mb-6 text-muted-foreground hover:text-foreground"
           onClick={() => navigate("/")}
+          disabled={isLoading}
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Volver
@@ -192,50 +251,63 @@ const Login = () => {
             <div>
               <CardTitle className="text-2xl">Inicio Sesión</CardTitle>
               <CardDescription>
-                Ingresa a tu cuenta para continuar
+                {isLoading ? "Procesando inicio de sesión..." : "Ingresa a tu cuenta para continuar"}
               </CardDescription>
             </div>
           </CardHeader>
          
-          {/* Social Login Section */}
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center mb-6">
+          <CardContent className="px-8 pb-8">
+            {/* Google Login Button */}
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full flex items-center justify-center gap-2 mb-6"
+              onClick={handleGoogleLogin}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-primary" />
+              ) : (
+                <img
+                  src="https://www.svgrepo.com/show/475656/google-color.svg"
+                  alt="Google"
+                  className="h-5 w-5"
+                />
+              )}
+              {isLoading ? 'Conectando...' : 'Iniciar sesión con Google'}
+            </Button>
+
+            <div className="relative mb-6">
+              <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-border" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-4 text-muted-foreground">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full flex items-center justify-center gap-2 mt-1 mb-6"
-                    onClick={handleGoogleLogin}
-                  >
-                    <img
-                      src="https://www.svgrepo.com/show/475656/google-color.svg"
-                      alt="Google"
-                      className="h-5 w-5"
-                    />
-                    Iniciar sesión con Google
-                  </Button>
-                </span>
+                <span className="bg-background px-2 text-muted-foreground">O</span>
               </div>
             </div>
-          </div>
 
-          <CardContent className="px-8 pb-8">
-            <form onSubmit={handleSubmit} className="space-y-6" autoComplete="off">
+            {/* Formulario con onSubmit y onKeyDown */}
+            <form 
+              onSubmit={handleSubmit} 
+              onKeyDown={handleKeyDown}
+              className="space-y-6" 
+              autoComplete="off"
+              noValidate
+            >
               <div className="space-y-2">
                 <Label htmlFor="email">Correo electrónico</Label>
                 <Input
                   id="email"
+                  name="email"
                   type="email"
                   placeholder="tu@email.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={handleKeyDown}
                   className="glass border-white/20"
                   required
-                  autoComplete="off"
+                  disabled={isLoading}
+                  autoComplete="username"
                 />
               </div>
               
@@ -244,13 +316,16 @@ const Login = () => {
                 <div className="relative">
                   <Input
                     id="password"
+                    name="password"
                     type={showPassword ? "text" : "password"}
                     placeholder="Tu contraseña"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={handleKeyDown}
                     className="glass border-white/20 pr-10"
                     required
-                    autoComplete="new-password"
+                    disabled={isLoading}
+                    autoComplete="current-password"
                   />
                   <Button
                     type="button"
@@ -258,6 +333,8 @@ const Login = () => {
                     size="icon"
                     className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
+                    disabled={isLoading}
+                    tabIndex={-1}
                   >
                     {showPassword ? (
                       <EyeOff className="h-4 w-4 text-muted-foreground" />
@@ -271,17 +348,31 @@ const Login = () => {
               <div className="flex items-center justify-between">
                 <div className="text-center">
                   <Button
+                    type="button"
                     variant="link"
                     className="text-sm text-muted-foreground"
                     onClick={() => navigate("/forgot-password")}
+                    disabled={isLoading}
                   >
                     ¿Olvidaste tu contraseña?
                   </Button>
                 </div>
               </div>
 
-              <Button type="submit" variant="hero" className="w-full">
-                Iniciar Sesión
+              <Button 
+                type="submit" 
+                variant="hero" 
+                className="w-full" 
+                disabled={isLoading || !email.trim() || !password.trim()}
+              >
+                {isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    Iniciando sesión...
+                  </div>
+                ) : (
+                  'Iniciar Sesión'
+                )}
               </Button>
             </form>
 
@@ -290,7 +381,7 @@ const Login = () => {
                 ¿No tienes cuenta?{" "}
                 <Link
                   to="/register"
-                  className="text-primary hover:underline font-medium"
+                  className={`text-primary hover:underline font-medium ${isLoading ? 'pointer-events-none opacity-50' : ''}`}
                 >
                   Regístrate aquí
                 </Link>
