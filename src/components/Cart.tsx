@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, Plus, Minus, ShoppingCart, Trash2, Edit } from "lucide-react";
+import { X, Plus, Minus, ShoppingCart, Trash2, Edit, ChevronLeft, Check, AlertCircle, MapPin, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
+import AddressManager from "./AddressManager";
 
 // Edge Functions URLs
 const EDGE_ADD_TO_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/add-to-cart";
@@ -13,6 +15,7 @@ const EDGE_GET_CART_ITEMS = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/
 const EDGE_CREATE_ORDER = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/create-paypal-order";
 const EDGE_CREATE_CHECKOUT = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/create-paypal-session";
 const EDGE_CLEAR_CART = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/clear-cart";
+const EDGE_CHANGE_SIZE = "https://xrflzmovtmlfrjhtoejs.supabase.co/functions/v1/change-cart-size";
 
 interface CartItem {
   cartItemId: string;
@@ -27,6 +30,7 @@ interface CartItem {
 }
 
 interface AvailableSize {
+  id: number;
   name: string;
   stock: number;
   variant: any;
@@ -40,6 +44,23 @@ interface CartProps {
   onRemoveItem: (id: number, selectedSize?: string) => void;
   onChangeSizeInCart?: (id: number, oldSize: string, newSize: string) => void;
   availableSizes?: AvailableSize[];
+}
+
+type AddressType = 'home' | 'work' | 'other' | 'parents' | 'friend' | 'office' | 'warehouse';
+
+interface Address {
+  id: string;
+  address_type: AddressType;
+  address_line_1: string;
+  address_line_2?: string;
+  city: string;
+  state: string;
+  postal_code: string;
+  country: string;
+  is_default: boolean;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 const Cart = ({
@@ -58,6 +79,16 @@ const Cart = ({
   const [loadingCheckout, setLoadingCheckout] = useState(false);
   const [loadingClearCart, setLoadingClearCart] = useState(false);
   const [categoriesMap, setCategoriesMap] = useState<Record<string, string>>({});
+  const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'address' | 'payment'>('cart');
+  
+  // Estados para tallas disponibles por producto
+  const [productSizes, setProductSizes] = useState<Record<number, AvailableSize[]>>({});
+  const [loadingSizes, setLoadingSizes] = useState<Record<string, boolean>>({});
+  
+  // Usar useRef para evitar dependencias circulares
+  const productSizesRef = useRef<Record<number, AvailableSize[]>>({});
+  
   const { toast } = useToast();
 
   const SHIPPING_THRESHOLD = 100000;
@@ -69,15 +100,72 @@ const Cart = ({
 
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Centraliza la carga del carrito
+  // Mantener productSizesRef sincronizado
+  useEffect(() => {
+    productSizesRef.current = productSizes;
+  }, [productSizes]);
+
+  // Función para cargar tallas disponibles de un producto específico
+  const fetchProductSizes = useCallback(async (productId: number): Promise<AvailableSize[]> => {
+    try {
+      if (productSizesRef.current[productId]) {
+        return productSizesRef.current[productId];
+      }
+
+      console.log(`🔍 Cargando tallas para producto ID: ${productId}`);
+
+      const { data, error } = await supabase
+        .from('products_variants')
+        .select(`
+          id_variante,
+          stock,
+          sizes!fk_sizes (
+            nombre_talla
+          )
+        `)
+        .eq('id_producto', productId)
+        .gt('stock', 0);
+
+      if (error) {
+        console.error(`❌ Error cargando tallas para producto ${productId}:`, error);
+        return [];
+      }
+
+      const sizes = data?.map((variant: any) => ({
+        id: variant.id_variante,
+        name: (variant.sizes?.nombre_talla || '').replace(/[\r\n\t\s]+/g, ' ').trim(),
+        stock: variant.stock,
+        variant: variant
+      })) || [];
+
+      console.log(`✅ Tallas cargadas para producto ${productId}:`, sizes);
+
+      setProductSizes(prev => ({
+        ...prev,
+        [productId]: sizes
+      }));
+
+      return sizes;
+    } catch (error) {
+      console.error(`❌ Error inesperado cargando tallas para producto ${productId}:`, error);
+      return [];
+    }
+  }, []);
+
+  // Centraliza la carga del carrito - CORREGIDO
   const fetchCartItems = useCallback(async () => {
     try {
+      console.log('🛒 Cargando items del carrito...');
+
       const { data } = await supabase.auth.getSession();
       const access_token = data?.session?.access_token;
+      
       if (!access_token) {
+        console.log('❌ No hay token de acceso');
         setItems([]);
         return;
       }
+
       const response = await fetch(EDGE_GET_CART_ITEMS, {
         method: "GET",
         headers: {
@@ -85,22 +173,72 @@ const Cart = ({
           "Authorization": `Bearer ${access_token}`,
         },
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const result = await response.json();
+      console.log('📦 Respuesta del carrito:', result);
+
       if (result.ok && Array.isArray(result.cart_items)) {
-        setItems(
-          result.cart_items.map((item: any) => ({
-            cartItemId: item.cartItemId ?? item.id,
-            id: item.id ?? item.product_id,
-            name: item.name ?? "",
-            price: item.price ?? 0,
-            image: item.image ?? "",
-            category: item.category ?? "",
-            quantity: item.quantity,
-            selectedSize: item.selectedSize ?? "",
-            variantId: item.variantId ?? item.variant_id,
-          }))
-        );
+        // Cargar tallas primero para todos los productos - TIPADO CORREGIDO
+        const uniqueProductIds = [...new Set(
+          result.cart_items
+            .map((item: any) => {
+              const productId = Number(item.id || item.product_id);
+              return !isNaN(productId) ? productId : null;
+            })
+            .filter((id): id is number => id !== null) // <-- Type guard para filtrar nulls
+        )];
+        
+        console.log('🔍 Productos únicos encontrados:', uniqueProductIds);
+
+        // Cargar tallas para todos los productos primero - CORREGIDO
+        await Promise.all(uniqueProductIds.map(async (productId: number) => {
+          if (!productSizesRef.current[productId]) {
+            await fetchProductSizes(productId);
+          }
+        }));
+
+        const cartItems = result.cart_items.map((item: any) => {
+          const productId = Number(item.id || item.product_id);
+          const variantId = Number(item.variantId || item.variant_id);
+          
+          if (!productId || isNaN(productId)) {
+            console.warn('⚠️ Item con product_id inválido:', item);
+          }
+
+          // Buscar la talla correcta basada en el variant_id
+          let correctSize = item.selectedSize || item.size || '';
+          
+          if (variantId && !isNaN(variantId)) {
+            const availableSizes = productSizesRef.current[productId] || [];
+            const sizeVariant = availableSizes.find(size => size.id === variantId);
+            if (sizeVariant) {
+              correctSize = sizeVariant.name;
+              console.log(`✅ Talla correcta encontrada para variant ${variantId}: ${correctSize}`);
+            }
+          }
+
+          return {
+            cartItemId: String(item.cartItemId || item.id || `${productId}-${variantId}`),
+            id: productId,
+            name: String(item.name || "Producto sin nombre"),
+            price: Number(item.price || 0),
+            image: String(item.image || ""),
+            category: String(item.category || ""),
+            quantity: Number(item.quantity || 1),
+            selectedSize: correctSize.trim(),
+            variantId: isNaN(variantId) ? undefined : variantId,
+          };
+        });
+
+        console.log('✅ Items del carrito procesados:', cartItems);
+        setItems(cartItems);
+
       } else {
+        console.log('❌ Respuesta inválida o carrito vacío');
         setItems([]);
         if (result.error) {
           toast({
@@ -111,6 +249,7 @@ const Cart = ({
         }
       }
     } catch (e: any) {
+      console.error('❌ Error cargando carrito:', e);
       toast({
         title: "Error",
         description: e?.message || "No se pudo cargar el carrito",
@@ -118,13 +257,17 @@ const Cart = ({
       });
       setItems([]);
     }
-  }, [toast]);
+  }, [toast, fetchProductSizes]);
 
   // Carga el carrito solo cuando el modal se abre
   useEffect(() => {
     if (isOpen) {
       setIsAnimating(true);
+      setCheckoutStep('cart');
+      setSelectedAddress(null);
       fetchCartItems();
+    } else {
+      setEditingSizeFor(null); // <-- CIERRA EL SELECTOR AL CERRAR
     }
   }, [isOpen, fetchCartItems]);
 
@@ -141,16 +284,101 @@ const Cart = ({
 
   const handleClose = () => {
     setIsAnimating(false);
+    setEditingSizeFor(null); // <-- CIERRA EL SELECTOR DE TALLAS AL CERRAR EL CART
     setTimeout(() => onClose(), 300);
   };
 
-  const handleSizeChange = (item: CartItem, newSize: string) => {
-    if (onChangeSizeInCart && item.selectedSize) {
-      onChangeSizeInCart(item.id, item.selectedSize, newSize);
-      setEditingSizeFor(null);
-    }
-  };
+ // En el handleSizeChange, actualiza para evitar que se elimine el producto:
+const handleSizeChange = async (item: CartItem, newSize: string) => {
+  const itemKey = item.cartItemId;
+  setLoadingSizes(prev => ({ ...prev, [itemKey]: true }));
 
+  try {
+    const cleanNewSize = newSize.replace(/\s+/g, ' ').trim();
+    console.log(`🔄 Cambiando talla del item ${item.name} de "${item.selectedSize}" a "${cleanNewSize}"`);
+
+    const { data } = await supabase.auth.getSession();
+    const access_token = data?.session?.access_token;
+    if (!access_token) throw new Error("Debes iniciar sesión.");
+
+    if (!item.id || isNaN(item.id)) {
+      throw new Error("ID de producto inválido");
+    }
+
+    // Encontrar la nueva variant_id
+    const availableSizes = productSizes[item.id] || [];
+    const newVariant = availableSizes.find(size => 
+      size.name.replace(/\s+/g, ' ').trim() === cleanNewSize
+    );
+
+    if (!newVariant) {
+      console.error(`❌ Talla "${cleanNewSize}" no encontrada para producto ${item.id}`);
+      console.log('Tallas disponibles:', availableSizes.map(s => `"${s.name}"`));
+      throw new Error("Talla no disponible");
+    }
+
+    console.log(`✅ Variant encontrado:`, newVariant);
+
+    // Llamar al edge function para cambiar la talla
+    const response = await fetch(EDGE_CHANGE_SIZE, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${access_token}`,
+      },
+      body: JSON.stringify({
+        product_id: item.id,
+        old_variant_id: item.variantId,
+        new_variant_id: newVariant.id,
+        quantity: item.quantity,
+        action: "change_size"
+      }),
+    });
+
+    const result = await response.json();
+    console.log('📡 Respuesta cambio de talla:', result);
+
+    if (result.ok) {
+      toast({
+        title: "Talla actualizada",
+        description: `Se cambió la talla de ${item.name} a ${cleanNewSize}`,
+        variant: "default"
+      });
+      
+      // Actualizar INMEDIATAMENTE el estado local para que se vea el cambio
+      setItems(prevItems => 
+        prevItems.map(prevItem => 
+          prevItem.cartItemId === item.cartItemId 
+            ? { 
+                ...prevItem, 
+                selectedSize: cleanNewSize, 
+                variantId: newVariant.id 
+              }
+            : prevItem
+        )
+      );
+      
+      setEditingSizeFor(null);
+      
+      // Recargar en segundo plano para sincronizar
+      setTimeout(() => {
+        fetchCartItems();
+      }, 500);
+      
+    } else {
+      throw new Error(result.error || "No se pudo cambiar la talla");
+    }
+  } catch (error: any) {
+    console.error('❌ Error cambiando talla:', error);
+    toast({
+      title: "Error al cambiar talla",
+      description: error?.message || "No se pudo cambiar la talla",
+      variant: "destructive",
+    });
+  } finally {
+    setLoadingSizes(prev => ({ ...prev, [itemKey]: false }));
+  }
+};
   // Agregar al carrito (sumar cantidad)
   const handleAddQuantity = async (item: CartItem) => {
     setLoadingItemId(item.cartItemId);
@@ -158,6 +386,11 @@ const Cart = ({
       const { data } = await supabase.auth.getSession();
       const access_token = data?.session?.access_token;
       if (!access_token) throw new Error("Debes iniciar sesión.");
+
+      // Validar product ID
+      if (!item.id || isNaN(item.id)) {
+        throw new Error("ID de producto inválido");
+      }
 
       const response = await fetch(EDGE_ADD_TO_CART, {
         method: "POST",
@@ -195,7 +428,7 @@ const Cart = ({
     setLoadingItemId(null);
   };
 
-  // Disminuir cantidad (solo actualiza local, pero podrías agregar edge si lo deseas)
+  // Disminuir cantidad
   const handleSubtractQuantity = async (item: CartItem) => {
     if (item.quantity > 1) {
       setLoadingItemId(item.cartItemId);
@@ -203,6 +436,11 @@ const Cart = ({
         const { data } = await supabase.auth.getSession();
         const access_token = data?.session?.access_token;
         if (!access_token) throw new Error("Debes iniciar sesión.");
+
+        // Validar product ID
+        if (!item.id || isNaN(item.id)) {
+          throw new Error("ID de producto inválido");
+        }
 
         const response = await fetch(EDGE_REMOVE_FROM_CART, {
           method: "POST",
@@ -212,13 +450,13 @@ const Cart = ({
           },
           body: JSON.stringify({
             product_id: item.id,
-            variant_id: item.variantId || null, // <-- Asegura que sea null si no existe
+            variant_id: item.variantId || null,
             quantity: 1
           }),
         });
-        
+
         const result = await response.json();
-        
+
         if (result.ok) {
           toast({
             title: "Producto actualizado",
@@ -226,7 +464,6 @@ const Cart = ({
           });
           await fetchCartItems();
         } else {
-          console.error("Error al restar cantidad:", result); // <-- Para debug
           toast({
             title: "Error",
             description: result.error || "No se pudo actualizar el carrito",
@@ -234,7 +471,6 @@ const Cart = ({
           });
         }
       } catch (error: any) {
-        console.error("Error en handleSubtractQuantity:", error); // <-- Para debug
         toast({
           title: "Error",
           description: error?.message || "No se pudo actualizar el carrito",
@@ -252,6 +488,11 @@ const Cart = ({
       const { data } = await supabase.auth.getSession();
       const access_token = data?.session?.access_token;
       if (!access_token) throw new Error("Debes iniciar sesión.");
+
+      // Validar product ID
+      if (!item.id || isNaN(item.id)) {
+        throw new Error("ID de producto inválido");
+      }
 
       const response = await fetch(EDGE_REMOVE_FROM_CART, {
         method: "POST",
@@ -328,7 +569,45 @@ const Cart = ({
   };
 
   // ----- INTEGRACIÓN PEDIDO + PASARELA DE PAGOS -----
+  const handleProceedToAddress = () => {
+    if (items.length === 0) {
+      toast({
+        title: "Carrito vacío",
+        description: "Agrega productos antes de proceder al pago",
+        variant: "destructive"
+      });
+      return;
+    }
+    setCheckoutStep('address');
+  };
+
+  const handleAddressSelect = (address: Address) => {
+    setSelectedAddress(address);
+  };
+
+  const handleProceedToPayment = () => {
+    if (!selectedAddress) {
+      toast({
+        title: "Dirección requerida",
+        description: "Selecciona una dirección de envío",
+        variant: "destructive"
+      });
+      return;
+    }
+    setCheckoutStep('payment');
+  };
+
+  // Actualizar handleCheckout para incluir la dirección
   const handleCheckout = async () => {
+    if (!selectedAddress) {
+      toast({
+        title: "Dirección requerida",
+        description: "Selecciona una dirección de envío",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoadingCheckout(true);
     try {
       const { data } = await supabase.auth.getSession();
@@ -336,33 +615,50 @@ const Cart = ({
       const user_email = data?.session?.user?.email;
       if (!user_email || !access_token) throw new Error("Debes iniciar sesión para pagar.");
 
-      // 1. Crear la orden en el backend (verificar stock)
-     // ... dentro de handleCheckout()
-    const orderPayload = {
-      items: items.map((item) => ({
-        product_id: item.id,
-        variant_id: item.variantId ?? null,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        image_url: item.image,
-        talla: item.selectedSize ?? null,
-      })),
-      address: null,
-      phone: null,
-      payment_method: "paypal",
-      shipping, // <--- agrega este campo
-    };
+      // Validar que todos los items tengan IDs válidos
+      const invalidItems = items.filter(item => !item.id || isNaN(item.id));
+      if (invalidItems.length > 0) {
+        console.error('❌ Items con IDs inválidos:', invalidItems);
+        throw new Error("Hay productos con datos inválidos en el carrito");
+      }
 
-const payload = {
-  items: items.map((item) => ({
-    name: item.name,
-    price: item.price,
-    quantity: item.quantity,
-  })),
-  email: user_email,
-  shipping, // <--- agrega este campo aquí también
-};
+      // Formatear dirección completa
+      const fullAddress = [
+        selectedAddress.address_line_1,
+        selectedAddress.address_line_2,
+        `${selectedAddress.city}, ${selectedAddress.state} ${selectedAddress.postal_code}`,
+        selectedAddress.country
+      ].filter(Boolean).join(', ');
+
+      // 1. Crear la orden en el backend (verificar stock)
+      const orderPayload = {
+        items: items.map((item) => ({
+          product_id: item.id,
+          variant_id: item.variantId ?? null,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          image_url: item.image,
+          talla: item.selectedSize ?? null,
+        })),
+        address: fullAddress,
+        phone: null,
+        payment_method: "paypal",
+        shipping,
+      };
+
+      const payload = {
+        items: items.map((item) => ({
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+        })),
+        email: user_email,
+        shipping,
+        address_id: selectedAddress.id
+      };
+
+      console.log('🚀 Enviando orden:', orderPayload);
 
       const orderResponse = await fetch(EDGE_CREATE_ORDER, {
         method: "POST",
@@ -374,6 +670,7 @@ const payload = {
       });
 
       const orderResult = await orderResponse.json();
+      console.log('📦 Respuesta orden:', orderResult);
 
       if (!orderResult.ok) {
         toast({
@@ -385,6 +682,7 @@ const payload = {
         return;
       }
 
+      console.log('💳 Creando sesión de pago...');
       const response = await fetch(EDGE_CREATE_CHECKOUT, {
         method: "POST",
         headers: {
@@ -395,6 +693,7 @@ const payload = {
       });
 
       const result = await response.json();
+      console.log('💳 Respuesta pago:', result);
 
       if (result.ok && result.url) {
         toast({
@@ -410,6 +709,7 @@ const payload = {
         });
       }
     } catch (error: any) {
+      console.error('❌ Error en checkout:', error);
       toast({
         title: "Error",
         description: error?.message || "No se pudo iniciar el pago.",
@@ -417,8 +717,6 @@ const payload = {
       });
     }
     setLoadingCheckout(false);
-    setLoadingClearCart(true);
-
   };
 
   if (!isOpen) return null;
@@ -442,190 +740,513 @@ const payload = {
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/20">
           <div className="flex items-center gap-3">
-            <ShoppingCart className="h-6 w-6 text-primary" />
-            <h2 className="text-xl font-bold">Carrito</h2>
-            {itemCount > 0 && (
+            {checkoutStep === 'cart' && <ShoppingCart className="h-6 w-6 text-primary" />}
+            {checkoutStep === 'address' && <MapPin className="h-6 w-6 text-primary" />}
+            {checkoutStep === 'payment' && <CreditCard className="h-6 w-6 text-primary" />}
+            
+            <h2 className="text-xl font-bold">
+              {checkoutStep === 'cart' && 'Carrito'}
+              {checkoutStep === 'address' && 'Dirección de Envío'}
+              {checkoutStep === 'payment' && 'Pago'}
+            </h2>
+            
+            {checkoutStep === 'cart' && itemCount > 0 && (
               <Badge className="bg-primary text-primary-foreground">
                 {itemCount}
               </Badge>
             )}
           </div>
-          <Button variant="ghost" size="icon" onClick={handleClose}>
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
-
-        {/* Cart Items */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {items.length === 0 ? (
-            <div className="text-center py-12">
-              <ShoppingCart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2">Tu carrito está vacío</h3>
-              <p className="text-muted-foreground mb-6">
-                Agrega algunos productos increíbles a tu carrito
-              </p>
-              <Button variant="hero" onClick={handleClose}>
-                Continuar Comprando
+          
+          <div className="flex items-center gap-2">
+            {checkoutStep !== 'cart' && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  if (checkoutStep === 'payment') {
+                    setCheckoutStep('address');
+                  } else {
+                    setCheckoutStep('cart');
+                  }
+                }}
+              >
+                <ChevronLeft className="h-5 w-5" />
               </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {items.map((item) => {
-                const itemKey = item.cartItemId;
-                const isEditingSize = editingSizeFor === itemKey;
-                const isItemLoading = loadingItemId === item.cartItemId;
-
-                return (
-                  <div
-                    key={item.cartItemId}
-                    className="flex gap-4 p-4 bg-card rounded-xl border border-white/10"
-                  >
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      className="w-16 h-16 object-cover rounded-lg"
-                    />
-
-                    <div className="flex-1">
-                      <h4 className="font-medium text-sm mb-1">{item.name}</h4>
-                      <div className="flex gap-2 mb-2">
-                        <Badge variant="outline" className="text-xs">
-                          {categoriesMap[item.category] || item.category || "Sin categoría"}
-                        </Badge>
-                        {item.selectedSize && (
-                          <div className="flex items-center gap-1">
-                            {isEditingSize ? (
-                              <Select
-                                value={item.selectedSize}
-                                onValueChange={(newSize) =>
-                                  handleSizeChange(item, newSize)
-                                }
-                              >
-                                <SelectTrigger className="h-6 w-16 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availableSizes.map((size) => (
-                                    <SelectItem key={size.name} value={size.name}>
-                                      {size.name} ({size.stock})
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <Badge variant="secondary" className="text-xs">
-                                Talla: {item.selectedSize}
-                              </Badge>
-                            )}
-                            {onChangeSizeInCart && !isEditingSize && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-4 w-4"
-                                onClick={() => setEditingSizeFor(itemKey)}
-                              >
-                                <Edit className="h-2 w-2" />
-                              </Button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-primary font-bold">
-                        ${(item.price * item.quantity).toLocaleString()}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveFromCart(item)}
-                        className="h-6 w-6 text-destructive hover:text-destructive"
-                        disabled={isItemLoading}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleSubtractQuantity(item)}
-                          className="h-6 w-6"
-                          disabled={item.quantity <= 1 || isItemLoading}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-
-                        <span className="w-8 text-center text-sm font-medium">
-                          {item.quantity}
-                        </span>
-
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleAddQuantity(item)}
-                          className="h-6 w-6"
-                          disabled={isItemLoading}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+            )}
+            <Button variant="ghost" size="icon" onClick={handleClose}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
 
-        {/* Footer */}
-        {items.length > 0 && (
-          <div className="border-t border-white/20 p-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-lg font-medium">Subtotal:</span>
-              <span className="text-2xl font-bold gradient-text">
-                ${subtotal.toLocaleString("es-CO")}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-lg font-medium">Envío:</span>
-              <span className="text-2xl font-bold gradient-text">
-                {shipping > 0 ? `$${shipping.toLocaleString("es-CO")}` : "Gratis"}
-              </span>
-            </div>
-            <div className="flex justify-between items-center font-bold">
-              <span className="text-lg">Total:</span>
-              <span className="text-2xl gradient-text">
-                ${total.toLocaleString("es-CO")}
-              </span>
+        {/* Content based on step */}
+        {checkoutStep === 'cart' && (
+          <>
+            {/* Cart Items */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {items.length === 0 ? (
+                <div className="text-center py-12">
+                  <ShoppingCart className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">Tu carrito está vacío</h3>
+                  <p className="text-muted-foreground mb-6">
+                    Agrega algunos productos increíbles a tu carrito
+                  </p>
+                  <Button variant="hero" onClick={handleClose}>
+                    Continuar Comprando
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {items.map((item) => {
+                    const itemKey = item.cartItemId;
+                    const isEditingSize = editingSizeFor === itemKey;
+                    const isItemLoading = loadingItemId === item.cartItemId;
+                    const isLoadingSize = loadingSizes[itemKey];
+                    const availableSizes = productSizes[item.id] || [];
+
+                    // LÓGICA MEJORADA para mostrar la talla correcta
+                    let displaySize = '';
+                    
+                    if (item.selectedSize && item.selectedSize.trim() && item.selectedSize !== 'undefined') {
+                      displaySize = item.selectedSize.trim();
+                    } else if (item.variantId && availableSizes.length > 0) {
+                      // Buscar la talla por variant_id
+                      const sizeVariant = availableSizes.find(size => size.id === item.variantId);
+                      displaySize = sizeVariant?.name.trim() || '';
+                    } else if (availableSizes.length > 0) {
+                      displaySize = availableSizes[0].name.trim();
+                    }
+
+                    return (
+                      <div
+                        key={item.cartItemId}
+                        className="flex gap-4 p-4 bg-card rounded-xl border border-white/10 relative"
+                        style={{ overflow: "visible", zIndex: isEditingSize ? 60 : 1 }} // <-- Dinámico z-index
+                      >
+                        <img
+                          src={item.image || '/placeholder-product.jpg'}
+                          alt={item.name}
+                          className="w-16 h-16 object-cover rounded-lg"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = '/placeholder-product.jpg';
+                          }}
+                        />
+
+                        <div className="flex-1">
+                          <h4 className="font-medium text-sm mb-1">{item.name}</h4>
+                          <div className="flex gap-2 mb-2">
+                            <Badge variant="outline" className="text-xs">
+                              {categoriesMap[item.category] || item.category || "Sin categoría"}
+                            </Badge>
+                            {/* Talla editable */}
+                            <div className="flex items-center gap-1 relative">
+                              <Badge variant="secondary" className="text-xs">
+                                {isLoadingSize
+                                  ? "Cambiando..."
+                                  : displaySize
+                                    ? `Talla: ${displaySize}`
+                                    : "Sin talla"}
+                              </Badge>
+                              {availableSizes.length > 1 && !isEditingSize && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-4 w-4"
+                                  onClick={() => {
+                                    if (!productSizes[item.id]) {
+                                      fetchProductSizes(item.id);
+                                    }
+                                    setEditingSizeFor(itemKey);
+                                  }}
+                                  title="Cambiar talla"
+                                >
+                                  <Edit className="h-3 w-3" />
+                                </Button>
+                              )}
+                              {/* Selector de talla */}
+                              {isEditingSize && (
+                                <div
+                                  className="absolute left-0 top-8 w-48 glass border border-primary/30 rounded-lg shadow-2xl p-3"
+                                  style={{ zIndex: 10001 }}
+                                >
+                                  <div className="mb-2">
+                                    <p className="text-xs text-muted-foreground mb-1">Selecciona nueva talla:</p>
+                                  </div>
+                                  <Select
+                                    value={displaySize}
+                                    onValueChange={(newSize) => handleSizeChange(item, newSize)}
+                                    disabled={isLoadingSize}
+                                  >
+                                    <SelectTrigger className="h-8 w-full text-xs bg-background/80 border-primary/20 text-foreground">
+                                      <SelectValue placeholder="Selecciona talla" />
+                                    </SelectTrigger>
+                                    <SelectContent 
+                                      className="glass border-primary/30 bg-background/95 backdrop-blur-md"
+                                      style={{ zIndex: 10002 }}
+                                    >
+                                      {availableSizes.map((size) => (
+                                        <SelectItem
+                                          key={size.id}
+                                          value={size.name.trim()}
+                                          disabled={size.stock === 0}
+                                          className="text-foreground hover:bg-primary/20 focus:bg-primary/20"
+                                        >
+                                          {size.name.trim()} {size.stock === 0 ? '(Agotado)' : `(${size.stock} disponibles)`}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <div className="flex gap-2 mt-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="flex-1 h-7 text-xs border-primary/20 hover:bg-primary/10"
+                                      onClick={() => setEditingSizeFor(null)}
+                                    >
+                                      Cancelar
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-primary font-bold">
+                            ${(item.price * item.quantity).toLocaleString()
+}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveFromCart(item)}
+                            className="h-6 w-6 text-destructive hover:text-destructive"
+                            disabled={isItemLoading}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleSubtractQuantity(item)}
+                              className="h-6 w-6"
+                              disabled={item.quantity <= 1 || isItemLoading}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+
+                            <span className="w-8 text-center text-sm font-medium">
+                              {item.quantity}
+                            </span>
+
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleAddQuantity(item)}
+                              className="h-6 w-6"
+                              disabled={isItemLoading}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            <div className="space-y-3">
+            {/* Footer */}
+            {items.length > 0 && (
+              <div className="border-t border-white/20 p-6 space-y-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium">Subtotal:</span>
+                  <span className="text-2xl font-bold gradient-text">
+                    ${subtotal.toLocaleString("es-CO")}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium">Envío:</span>
+                  <span className="text-2xl font-bold gradient-text">
+                    {shipping > 0 ? `$${shipping.toLocaleString("es-CO")}` : "Gratis"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center font-bold">
+                  <span className="text-lg">Total:</span>
+                  <span className="text-2xl gradient-text">
+                    ${total.toLocaleString("es-CO")}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  <Button
+                    variant="hero"
+                    className="w-full"
+                    size="lg"
+                    onClick={handleProceedToAddress}
+                    disabled={items.some(item => !item.id || isNaN(item.id))}
+                  >
+                    {items.some(item => !item.id || isNaN(item.id)) ? (
+                      'Hay productos con datos inválidos'
+                    ) : (
+                      'Continuar con la Compra'
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full"
+                    onClick={handleClearCart}
+                    disabled={loadingClearCart || items.length === 0}
+                  >
+                    {loadingClearCart ? "Limpiando..." : "Limpiar Carrito"}
+                  </Button>
+                  <Button variant="ghost" className="w-full" onClick={handleClose}>
+                    Continuar Comprando
+                  </Button>
+                </div>
+
+                <div className="text-center text-xs text-muted-foreground">
+                  Envío gratis en compras superiores a $100.000
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Resto del componente se mantiene igual */}
+        {checkoutStep === 'address' && (
+          <div className="flex flex-col h-full">
+            <div className="flex-1 p-6 overflow-y-auto">
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-white mb-2">Selecciona tu dirección de envío</h3>
+                <p className="text-gray-300 text-sm">
+                  Elige dónde quieres recibir tu pedido
+                </p>
+              </div>
+              
+              {/* Wrapper con fondo negro para las direcciones */}
+              <div className="bg-black/40 rounded-lg p-4 border border-white/10">
+                <AddressManager
+                  mode="select"
+                  onAddressSelect={handleAddressSelect}
+                  selectedAddressId={selectedAddress?.id}
+                  compact={true}
+                />
+              </div>
+
+              {/* Mostrar dirección seleccionada */}
+              {selectedAddress && (
+                <div className="mt-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Check className="h-4 w-4 text-green-400" />
+                    <span className="text-green-300 font-medium">Dirección seleccionada</span>
+                  </div>
+                  <div className="text-sm text-gray-300">
+                    <p className="font-medium text-white">
+                      {selectedAddress.address_type.charAt(0).toUpperCase() + selectedAddress.address_type.slice(1)}
+                    </p>
+                    <p>{selectedAddress.address_line_1}</p>
+                    {selectedAddress.address_line_2 && <p>{selectedAddress.address_line_2}</p>}
+                    <p>
+                      {selectedAddress.city}, {selectedAddress.state} {selectedAddress.postal_code}
+                    </p>
+                    <p>{selectedAddress.country}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="border-t border-white/20 p-6">
               <Button
                 variant="hero"
                 className="w-full"
-                size="lg"
-                onClick={handleCheckout}
-                disabled={loadingCheckout}
+                onClick={handleProceedToPayment}
+                disabled={!selectedAddress}
               >
-                {loadingCheckout ? "Procesando..." : "Proceder al Pago con PayPal"}
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full"
-                onClick={handleClearCart}
-                disabled={loadingClearCart || items.length === 0}
-              >
-                {loadingClearCart ? "Limpiando..." : "Limpiar Carrito"}
-              </Button>
-              <Button variant="ghost" className="w-full" onClick={handleClose}>
-                Continuar Comprando
+                {selectedAddress ? 'Continuar al Pago' : 'Selecciona una Dirección'}
               </Button>
             </div>
+          </div>
+        )}
 
-            <div className="text-center text-xs text-muted-foreground">
-              Envío gratis en compras superiores a $100.000
+        {checkoutStep === 'payment' && (
+          <div className="flex flex-col h-full">
+            {/* Resumen completo de la compra - ALTURA AJUSTADA */}
+            <div className="flex-1 overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 180px)' }}>
+              <div className="space-y-4"> {/* Reducido de space-y-6 a space-y-4 */}
+                {/* Título */}
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2">Resumen de tu pedido</h3>
+                  <p className="text-gray-300 text-sm">
+                    Revisa los detalles antes de proceder al pago
+                  </p>
+                </div>
+
+                {/* Lista de productos - COMPACTADA */}
+                <div className="space-y-2"> {/* Reducido spacing */}
+                  <h4 className="font-medium text-white text-sm">Productos ({itemCount} {itemCount === 1 ? 'artículo' : 'artículos'})</h4>
+                  <div className="space-y-2 bg-black/40 rounded-lg p-3 border border-white/10 max-h-32 overflow-y-auto"> {/* Altura máxima para productos */}
+                    {items.map((item) => {
+                      const displaySize = item.selectedSize && item.selectedSize.trim() && item.selectedSize !== 'undefined' 
+                        ? item.selectedSize.trim() 
+                        : '';
+
+                      return (
+                        <div key={item.cartItemId} className="flex gap-2 py-1 border-b border-white/5 last:border-b-0"> {/* Reducido gap y padding */}
+                          <img
+                            src={item.image || '/placeholder-product.jpg'}
+                            alt={item.name}
+                            className="w-10 h-10 object-cover rounded-md flex-shrink-0" // Imagen más pequeña
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = '/placeholder-product.jpg';
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white font-medium text-xs truncate">{item.name}</p>
+                            <div className="flex gap-1 mt-0.5">
+                              {displaySize && (
+                                <Badge variant="outline" className="text-xs px-1 py-0">
+                                  {displaySize}
+                                </Badge>
+                              )}
+                              <span className="text-gray-400 text-xs">
+                                x{item.quantity}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-primary font-medium text-xs">
+                              ${(item.price * item.quantity).toLocaleString("es-CO")}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Dirección de envío - COMPACTADA */}
+                {selectedAddress && (
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-white text-sm">Dirección de envío</h4>
+                    <div className="bg-black/40 rounded-lg p-3 border border-white/10">
+                      <div className="flex items-center gap-2 mb-1">
+                        <MapPin className="h-3 w-3 text-primary" />
+                        <span className="text-white font-medium text-xs">
+                          {selectedAddress.address_type.charAt(0).toUpperCase() + selectedAddress.address_type.slice(1)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-300">
+                        <p className="truncate">{selectedAddress.address_line_1}</p>
+                        <p className="truncate">
+                          {selectedAddress.city}, {selectedAddress.state}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Desglose de costos - COMPACTADO */}
+                <div className="space-y-2">
+                  <h4 className="font-medium text-white text-sm">Desglose de costos</h4>
+                  <div className="bg-black/40 rounded-lg p-3 border border-white/10 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300 text-sm">Subtotal</span>
+                      <span className="text-white font-medium text-sm">
+                        ${subtotal.toLocaleString("es-CO")}
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-300 text-sm">Envío</span>
+                      <span className={`font-medium text-sm ${shipping === 0 ? 'text-green-400' : 'text-white'}`}>
+                        {shipping === 0 ? 'Gratis' : `$${shipping.toLocaleString("es-CO")}`}
+                      </span>
+                    </div>
+                    
+                    {subtotal >= SHIPPING_THRESHOLD && subtotal > 0 && (
+                      <p className="text-xs text-green-400">
+                        ¡Envío gratis por compra superior a ${SHIPPING_THRESHOLD.toLocaleString("es-CO")}!
+                      </p>
+                    )}
+
+                    <hr className="border-white/10" />
+                    
+                    <div className="flex justify-between items-center">
+                      <span className="text-base font-semibold text-white">Total</span>
+                      <span className="text-lg font-bold text-primary">
+                        ${total.toLocaleString("es-CO")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Método de pago - COMPACTADO */}
+                <div className="space-y-2">
+                  <h4 className="font-medium text-white text-sm">Método de pago</h4>
+                  <div className="bg-black/40 rounded-lg p-3 border border-white/10">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-5 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
+                        <span className="text-white font-bold text-xs">PP</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-white font-medium text-sm">PayPal</p>
+                        <p className="text-gray-400 text-xs">Pago seguro</p>
+                      </div>
+                      <Check className="h-3 w-3 text-green-400" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Información adicional - COMPACTADA */}
+                <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-blue-300 font-medium text-xs">Información importante</p>
+                      <ul className="text-blue-100/80 text-xs mt-1 space-y-0.5">
+                        <li>• Procesado en 1-2 días hábiles</li>
+                        <li>• Código de seguimiento por email</li>
+                        <li>• 30 días para devoluciones</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Botón de pago - FIJO EN LA PARTE INFERIOR */}
+            <div className="border-t border-white/20 p-4 bg-card/95 backdrop-blur-sm">
+              <div className="space-y-2">
+                <Button
+                  variant="hero"
+                  className="w-full h-12"
+                  onClick={handleCheckout}
+                  disabled={loadingCheckout}
+                >
+                  {loadingCheckout ? (
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span className="text-sm">Procesando...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-4 w-4" />
+                      <span className="text-sm font-semibold">
+                        Pagar ${total.toLocaleString("es-CO")}
+                      </span>
+                    </div>
+                  )}
+                </Button>
+                
+                <p className="text-center text-xs text-gray-400">
+                  Al proceder, aceptas nuestros términos y condiciones
+                </p>
+              </div>
             </div>
           </div>
         )}

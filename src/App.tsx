@@ -29,6 +29,8 @@ import TermsOfService from './pages/TermsOfService';
 import ReturnPolicy from './pages/ReturnPolicy';
 import About from './pages/About';
 import ShippingPolicy from './pages/ShippingPolicy';
+import PaymentSuccess from '@/pages/PaymentSuccess';
+import Tracking from './pages/Tracking';
 
 
 const queryClient = new QueryClient();
@@ -53,64 +55,65 @@ const App = () => {
           <Sonner />
           <AccessibilityMenu />
           <Router>
-          <Routes>
-                <Route index element={<Index />} />
-                <Route path="/productos" element={<Products />} />
-                <Route path="/productos/:id" element={<ProductDetail />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/verify-email" element={<VerifyEmail />} />
-                <Route path="/auth-callback" element={<AuthCallback />} />
-                <Route path="/pago-exitoso" element={<PagoExitoso />} />
-                
-                {/* Ruta específica para nuevos usuarios de Google */}
-                <Route 
-                  path="/complete-profile" 
-                  element={
-                    <ProtectedRoute requiresAuth requiresNewUser>
-                      <CompleteProfile />
-                    </ProtectedRoute>
-                  } 
-                />
+            <Routes>
+              <Route index element={<Index />} />
+              <Route path="/productos" element={<Products />} />
+              <Route path="/productos/:id" element={<ProductDetail />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
+              <Route path="/auth-callback" element={<AuthCallback />} />
+              <Route path="/pago-exitoso" element={<PagoExitoso />} />
+              <Route path="/payment-success" element={<PaymentSuccess />} />
+              
+              {/* Ruta específica para nuevos usuarios de Google */}
+              <Route 
+                path="/complete-profile" 
+                element={
+                  <ProtectedRoute requiresAuth requiresNewUser>
+                    <CompleteProfile />
+                  </ProtectedRoute>
+                } 
+              />
 
-                {/* Rutas protegidas que requieren autenticación */}
-                <Route 
-                  path="/profile" 
-                  element={
-                    <ProtectedRoute>
-                      <Profile />
-                    </ProtectedRoute>
-                  } 
-                />
-                <Route 
-                  path="/admin"
-                  element={
-                    <AdminRoute>
-                      <Admin />
-                    </AdminRoute>
-                  }
-                />
+              {/* Rutas protegidas que requieren autenticación */}
+              <Route 
+                path="/profile" 
+                element={
+                  <ProtectedRoute>
+                    <Profile />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin"
+                element={
+                  <AdminRoute>
+                    <Admin />
+                  </AdminRoute>
+                }
+              />
 
-                {/* Nuevas rutas agregadas */}
-                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-                <Route path="/terms-of-service" element={<TermsOfService />} />
-                <Route path="/return-policy" element={<ReturnPolicy />} />
-                <Route path="/about" element={<About />} />
-                <Route path="/shipping-policy" element={<ShippingPolicy />} />
+              {/* Nuevas rutas agregadas */}
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/terms-of-service" element={<TermsOfService />} />
+              <Route path="/return-policy" element={<ReturnPolicy />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/shipping-policy" element={<ShippingPolicy />} />
+              <Route path="/seguimiento" element={<Tracking />} />
 
-                {/* Ruta catch-all */}
-                <Route path="*" element={<NotFound />} />
+              {/* Ruta catch-all */}
+              <Route path="*" element={<NotFound />} />
           
-          </Routes>
-          <Footer />
-        </Router>
+            </Routes>
+            <Footer />
+          </Router>
         </TooltipProvider>
       </QueryClientProvider>
     </AuthProvider>
   );
 };
-
 
 export default App;

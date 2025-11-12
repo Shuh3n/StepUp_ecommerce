@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Heart, Trash2, ShoppingBag } from "lucide-react";
+import { Heart, Trash2, ShoppingBag, X } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { addFavorite, removeFavorite } from "@/lib/api/favorites";
@@ -56,7 +56,7 @@ const ProductCard = ({
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [cartLoading, setCartLoading] = useState(false);
   const [localIsFavorite, setLocalIsFavorite] = useState(isFavorite);
-  const [showSizeSelector, setShowSizeSelector] = useState(false);
+  const [showSizeModal, setShowSizeModal] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
 
   useEffect(() => {
@@ -97,7 +97,8 @@ const ProductCard = ({
       onClick();
       return;
     }
-    setShowSizeSelector(true); // Mostrar el selector/modal de tallas
+    setShowSizeModal(true);
+    setSelectedVariant(null); // Reset selection
   };
 
   // FAVORITOS
@@ -177,6 +178,8 @@ const ProductCard = ({
   const handleAddToCartWithVariant = async (variant: ProductVariant | null) => {
     if (!variant) return;
     setCartLoading(true);
+    setShowSizeModal(false); // Cerrar modal primero
+    
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError || !sessionData?.session?.access_token) {
@@ -247,149 +250,183 @@ const ProductCard = ({
   };
 
   return (
-    <div
-      className="glass rounded-xl overflow-hidden border border-white/20 hover:border-white/40 transition-all duration-300 cursor-pointer group h-full flex flex-col"
-      onClick={onClick}
-    >
-      {/* Imagen sin badges */}
-      <div className="relative aspect-square overflow-hidden">
-        <img
-          src={image || "/placeholder.png"}
-          alt={name}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-        />
+    <>
+      <div
+        className="glass rounded-xl overflow-hidden border border-white/20 hover:border-white/40 transition-all duration-300 cursor-pointer group h-full flex flex-col"
+        onClick={onClick}
+      >
+        {/* Imagen sin badges */}
+        <div className="relative aspect-square overflow-hidden">
+          <img
+            src={image || "/placeholder.png"}
+            alt={name}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+          />
 
-        {/* Botón de favoritos */}
-        <Button
-          type="button"
-          variant={localIsFavorite ? "default" : "ghost"}
-          size="icon"
-          disabled={favoriteLoading}
-          className={`absolute top-3 right-3 rounded-full z-10 ${localIsFavorite ? "bg-red-500 text-white" : "bg-white/80 text-red-500 hover:bg-red-500 hover:text-white"}`}
-          onClick={handleFavoriteClick}
-        >
-          <Heart className={`h-5 w-5 ${localIsFavorite ? "fill-current" : ""}`} />
-        </Button>
+          {/* Botón de favoritos */}
+          <Button
+            type="button"
+            variant={localIsFavorite ? "default" : "ghost"}
+            size="icon"
+            disabled={favoriteLoading}
+            className={`absolute top-3 right-3 rounded-full z-10 ${localIsFavorite ? "bg-red-500 text-white" : "bg-white/80 text-red-500 hover:bg-red-500 hover:text-white"}`}
+            onClick={handleFavoriteClick}
+          >
+            <Heart className={`h-5 w-5 ${localIsFavorite ? "fill-current" : ""}`} />
+          </Button>
 
-        {/* Badges en la parte superior */}
-        <div className="absolute top-3 left-3 right-16 flex justify-between items-start pointer-events-none">
-          <Badge variant="outline" className="bg-black/50 text-white border-white/20 text-xs">
-            {category}
-          </Badge>
-          <div className="flex flex-col gap-1">
-            {isNew() && (
-              <Badge variant="secondary" className="bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white border-0 text-xs font-medium">
-                ✨ Nuevo
-              </Badge>
-            )}
-            {!hasVariants ? (
-              !isNew() && (
-                <Badge variant="secondary" className="bg-blue-500/80 text-white text-xs">
-                  Disponible
+          {/* Badges en la parte superior */}
+          <div className="absolute top-3 left-3 right-16 flex justify-between items-start pointer-events-none">
+            <Badge variant="outline" className="bg-black/50 text-white border-white/20 text-xs">
+              {category}
+            </Badge>
+            <div className="flex flex-col gap-1">
+              {isNew() && (
+                <Badge variant="secondary" className="bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white border-0 text-xs font-medium">
+                  ✨ Nuevo
                 </Badge>
-              )
-            ) : hasStock ? (
-              <Badge variant="secondary" className="bg-green-500/80 text-white text-xs">
-                En Stock
-              </Badge>
-            ) : (
-              <Badge variant="destructive" className="bg-red-500/80 text-white text-xs">
-                🚫 Agotado
-              </Badge>
-            )}
-            {!hasVariants && (
-              <Badge variant="secondary" className="bg-gray-500/80 text-white text-xs">
-                Sin Configurar
-              </Badge>
-            )}
+              )}
+              {!hasVariants ? (
+                !isNew() && (
+                  <Badge variant="secondary" className="bg-blue-500/80 text-white text-xs">
+                    Disponible
+                  </Badge>
+                )
+              ) : hasStock ? (
+                <Badge variant="secondary" className="bg-green-500/80 text-white text-xs">
+                  En Stock
+                </Badge>
+              ) : (
+                <Badge variant="destructive" className="bg-red-500/80 text-white text-xs">
+                  🚫 Agotado
+                </Badge>
+              )}
+              {!hasVariants && (
+                <Badge variant="secondary" className="bg-gray-500/80 text-white text-xs">
+                  Sin Configurar
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Contenido con altura flexible */}
+        <div className="p-4 flex flex-col flex-grow">
+          <div className="flex-grow">
+            <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2 min-h-[3.5rem]">
+              {name}
+            </h3>
+            {description && (
+              <p className="text-sm text-muted-foreground line-clamp-2 mb-3 min-h-[2.5rem]">
+                {description}
+              </p>
+            )}
+          </div>
+          <div className="mb-4">
+            <p className="text-2xl font-bold gradient-text mb-1">
+              ${price.toLocaleString()}
+            </p>
+            {hasVariants ? (
+              <p className="text-xs text-muted-foreground">
+                {variants.filter(v => Number(v.stock) > 0).length} de {variants.length} tallas disponibles
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Producto sin variantes configuradas
+              </p>
+            )}
+          </div>
+          <Button
+            onClick={handleButtonClick}
+            disabled={buttonProps.disabled || cartLoading}
+            variant={buttonProps.variant}
+            className="w-full mt-auto flex items-center justify-center"
+            size="sm"
+          >
+            <ShoppingBag className="h-4 w-4 mr-2" />
+            {cartLoading ? "Agregando..." : buttonProps.text}
+          </Button>
+        </div>
       </div>
 
-      {/* Contenido con altura flexible */}
-      <div className="p-4 flex flex-col flex-grow">
-        <div className="flex-grow">
-          <h3 className="font-semibold text-lg leading-tight line-clamp-2 mb-2 min-h-[3.5rem]">
-            {name}
-          </h3>
-          {description && (
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-3 min-h-[2.5rem]">
-              {description}
-            </p>
-          )}
-        </div>
-        <div className="mb-4">
-          <p className="text-2xl font-bold gradient-text mb-1">
-            ${price.toLocaleString()}
-          </p>
-          {hasVariants ? (
-            <p className="text-xs text-muted-foreground">
-              {variants.filter(v => Number(v.stock) > 0).length} de {variants.length} tallas disponibles
-            </p>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Producto sin variantes configuradas
-            </p>
-          )}
-        </div>
-        <Button
-          onClick={handleButtonClick}
-          disabled={buttonProps.disabled || cartLoading}
-          variant={buttonProps.variant}
-          className="w-full mt-auto flex items-center justify-center"
-          size="sm"
-        >
-          <ShoppingBag className="h-4 w-4 mr-2" />
-          {cartLoading ? "Agregando..." : buttonProps.text}
-        </Button>
-      </div>
-
-      {/* Selector de talla - Modal */}
-      {showSizeSelector && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 shadow-lg min-w-[300px]">
-            <h3 className="font-bold mb-4">Selecciona una talla</h3>
-            <div className="flex flex-col gap-2">
-              {variants.filter(v => v.stock > 0).map(variant => (
-                <Button
-                  key={variant.id_variante}
-                  variant={selectedVariant?.id_variante === variant.id_variante ? "default" : "outline"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedVariant(variant);
-                  }}
-                  className="w-full"
-                >
-                  {variant.size?.nombre_talla || `Talla ${variant.id_talla}`}
-                </Button>
-              ))}
-            </div>
-            <div className="flex gap-2 mt-6">
+      {/* Modal de selección de talla */}
+      {showSizeModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm sm:max-w-md mx-2 sm:mx-4 overflow-hidden max-h-[90vh] sm:max-h-[85vh] flex flex-col">
+            {/* Header del modal */}
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900">Selecciona una talla</h3>
+                <p className="text-xs sm:text-sm text-gray-600 mt-1 truncate">{name}</p>
+              </div>
               <Button
-                disabled={!selectedVariant}
-                onClick={async (e) => {
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
                   e.stopPropagation();
-                  setShowSizeSelector(false);
-                  await handleAddToCartWithVariant(selectedVariant);
+                  setShowSizeModal(false);
                 }}
-                className="bg-orange-500 text-white hover:bg-orange-600"
+                className="rounded-full hover:bg-gray-100 flex-shrink-0"
               >
-                Agregar al carrito
+                <X className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
+            </div>
+
+            {/* Lista de tallas */}
+            <div className="p-4 sm:p-6 flex-1 overflow-y-auto">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                {variants.filter(v => v.stock > 0).map(variant => (
+                  <Button
+                    key={variant.id_variante}
+                    variant={selectedVariant?.id_variante === variant.id_variante ? "default" : "outline"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedVariant(variant);
+                    }}
+                    className={`h-10 sm:h-12 flex flex-col items-center justify-center transition-all text-xs sm:text-sm ${
+                      selectedVariant?.id_variante === variant.id_variante 
+                        ? "bg-orange-500 text-white border-orange-500 hover:bg-orange-600" 
+                        : "hover:border-orange-300"
+                    }`}
+                  >
+                    <span className="font-medium">
+                      {variant.size?.nombre_talla || `Talla ${variant.id_talla}`}
+                    </span>
+                    <span className="text-xs opacity-70">
+                      {variant.stock} disp.
+                    </span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer con botones */}
+            <div className="p-4 sm:p-6 border-t border-gray-100 flex gap-2 sm:gap-3 flex-shrink-0">
               <Button
                 variant="outline"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowSizeSelector(false);
+                  setShowSizeModal(false);
                 }}
+                className="flex-1 text-sm"
               >
                 Cancelar
+              </Button>
+              <Button
+                disabled={!selectedVariant || cartLoading}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  await handleAddToCartWithVariant(selectedVariant);
+                }}
+                className="flex-1 bg-orange-500 text-white hover:bg-orange-600 text-sm"
+              >
+                {cartLoading ? "Agregando..." : "Agregar"}
               </Button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

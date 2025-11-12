@@ -170,19 +170,39 @@ const Products = () => {
     [products]
   );
 
-  // Productos filtrados y ordenados
+  // Productos filtrados y ordenados - CORREGIDO
   const sortedProducts = useMemo(() => {
+    console.log('🔍 Aplicando filtros:', {
+      selectedCategory,
+      priceRange,
+      selectedSizes,
+      totalProducts: products.length
+    });
+
     const filtered = products.filter(product => {
-      const categoryMatch =
-        selectedCategory === "all" ||
-        product.id_category === selectedCategory;
+      // CORREGIDO: Usar product.category en lugar de product.id_category
+      const categoryMatch = selectedCategory === "all" || product.category === selectedCategory;
+      
       const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1];
+      
       const sizeMatch = selectedSizes.length === 0 ||
         product.variants?.some(v =>
           v.size && selectedSizes.includes(v.size.nombre_talla?.trim() || '') && v.stock > 0
         );
+
+      console.log(`Producto ${product.name}:`, {
+        category: product.category,
+        categoryMatch,
+        priceMatch,
+        sizeMatch,
+        passes: categoryMatch && priceMatch && sizeMatch
+      });
+
       return categoryMatch && priceMatch && sizeMatch;
     });
+
+    console.log(`✅ Productos filtrados: ${filtered.length} de ${products.length}`);
+
     return filtered.sort((a, b) => {
       switch (sortBy) {
         case "price-low":
@@ -195,7 +215,7 @@ const Products = () => {
     });
   }, [products, selectedCategory, priceRange, selectedSizes, sortBy]);
 
-  // Handlers de carrito
+  // Handlers de carrito - CORREGIDO
   const handleAddToCart = (product: Product) => {
     setCartItems(prev => {
       const existingItem = prev.find(item => item.id === product.id);
@@ -204,7 +224,7 @@ const Products = () => {
         name: product.name,
         price: product.price,
         image: product.image_url || '',
-        category: categoriesMap[product.id_category] || 'Sin categoría',
+        category: product.category_name, // CORREGIDO: Usar category_name
         quantity: 1
       };
       if (existingItem) {
