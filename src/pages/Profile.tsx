@@ -1314,7 +1314,7 @@ Una vez confirmado, NO podrás recuperar tu cuenta ni volver a usar este correo 
                       Cuando realices tu primera compra, aparecerá aquí
                     </p>
                     <Button 
-                      onClick={() => navigate('/products')}
+                      onClick={() => navigate('/productos')}
                       variant="hero"
                     >
                       Explorar Productos
