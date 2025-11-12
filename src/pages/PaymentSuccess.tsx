@@ -42,23 +42,26 @@ const PaymentSuccess = () => {
   const sendOrderConfirmationEmail = async (orderData) => {
     try {
       console.log('📧 Enviando email de confirmación para pedido:', orderData.id);
+      console.log('📧 Datos completos del pedido:', orderData);
       
-      // Preparar datos para el email
+      // Preparar datos para el email con validaciones
       const emailData = {
-        id: orderData.id,
-        user_email: orderData.user_email,
-        user_name: orderData.user_name || 'Estimado cliente',
-        total: Number(orderData.total),
+        id: orderData.id || 'Sin ID',
+        user_email: orderData.user_email || orderData.email || 'email@ejemplo.com',
+        user_name: orderData.user_name || orderData.name || 'Estimado cliente',
+        total: Number(orderData.total || 0),
         shipping: Number(orderData.shipping || 0),
-        subtotal: Number(orderData.total) - Number(orderData.shipping || 0),
-        items: orderData.items || [],
-        address: orderData.address,
-        phone: orderData.phone,
+        subtotal: Number(orderData.total || 0) - Number(orderData.shipping || 0),
+        items: Array.isArray(orderData.items) ? orderData.items : [],
+        address: orderData.address || orderData.delivery_address || 'Dirección no especificada',
+        phone: orderData.phone || orderData.contact_phone || '',
         payment_method: orderData.payment_method || 'PayPal',
         payment_status: orderData.payment_status || 'Pagado',
         status: orderData.status || 'Confirmado',
         created_at: orderData.created_at || new Date().toISOString()
       };
+
+      console.log('📧 Datos preparados para email:', emailData);
 
       const { data, error } = await supabase.functions.invoke('send-order-confirmation', {
         body: emailData
