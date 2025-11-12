@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { updateOrderStatus } from '@/utils/orderUtils';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/lib/supabase';
 import { 
   CheckCircle, 
   Package, 
@@ -18,7 +19,8 @@ import {
   Box,
   CheckCircle2,
   Star,
-  AlertCircle
+  AlertCircle,
+  Mail
 } from 'lucide-react';
 
 const PaymentSuccess = () => {
@@ -28,12 +30,64 @@ const PaymentSuccess = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [orderData, setOrderData] = useState(null);
   const [updateError, setUpdateError] = useState(null);
+  const [emailSent, setEmailSent] = useState(false);
+  const [emailError, setEmailError] = useState(null);
 
   // Obtener parámetros de la URL
   const orderId = searchParams.get('order_id');
   const paypalOrderId = searchParams.get('paypal_order_id');
   const paypalPayerId = searchParams.get('PayerID');
   const paypalToken = searchParams.get('token');
+
+  const sendOrderConfirmationEmail = async (orderData) => {
+    try {
+      console.log('📧 Enviando email de confirmación para pedido:', orderData.id);
+      
+      // Preparar datos para el email
+      const emailData = {
+        id: orderData.id,
+        user_email: orderData.user_email,
+        user_name: orderData.user_name || 'Estimado cliente',
+        total: Number(orderData.total),
+        shipping: Number(orderData.shipping || 0),
+        subtotal: Number(orderData.total) - Number(orderData.shipping || 0),
+        items: orderData.items || [],
+        address: orderData.address,
+        phone: orderData.phone,
+        payment_method: orderData.payment_method || 'PayPal',
+        payment_status: orderData.payment_status || 'Pagado',
+        status: orderData.status || 'Confirmado',
+        created_at: orderData.created_at || new Date().toISOString()
+      };
+
+      const { data, error } = await supabase.functions.invoke('send-order-confirmation', {
+        body: emailData
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('✅ Email de confirmación enviado exitosamente');
+      setEmailSent(true);
+      
+      toast({
+        title: "📧 Email enviado",
+        description: "Se ha enviado la confirmación del pedido a tu email.",
+        variant: "default"
+      });
+
+    } catch (error) {
+      console.error('❌ Error al enviar email de confirmación:', error);
+      setEmailError(error.message);
+      
+      toast({
+        title: "⚠️ Error en email",
+        description: "Tu pedido fue procesado pero no se pudo enviar el email de confirmación.",
+        variant: "destructive"
+      });
+    }
+  };
 
   useEffect(() => {
     const processPaymentSuccess = async () => {
@@ -66,6 +120,10 @@ const PaymentSuccess = () => {
             description: "Tu pedido ha sido confirmado y será procesado pronto.",
             variant: "default"
           });
+
+          // Enviar email de confirmación
+          await sendOrderConfirmationEmail(result.order);
+          
         } else {
           console.warn('⚠️ Pago exitoso pero error al actualizar:', result.error);
           setUpdateError(result.error);
@@ -104,6 +162,10 @@ const PaymentSuccess = () => {
           <CardContent className="p-6 text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-400 border-t-transparent mx-auto mb-4"></div>
             <p className="text-white">Procesando pago exitoso...</p>
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <Mail className="h-4 w-4 text-green-400 animate-pulse" />
+              <span className="text-green-300 text-sm">Preparando confirmación...</span>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -130,6 +192,25 @@ const PaymentSuccess = () => {
             <p className="text-green-200 text-lg mb-4">
               Tu pedido ha sido confirmado y será procesado pronto
             </p>
+
+            {/* Estado del email */}
+            {emailSent ? (
+              <div className="flex items-center justify-center gap-2 mb-4 p-3 bg-green-500/20 rounded-lg border border-green-400/30">
+                <Mail className="h-5 w-5 text-green-300" />
+                <span className="text-green-200 font-medium">Email de confirmación enviado</span>
+                <CheckCircle2 className="h-4 w-4 text-green-400" />
+              </div>
+            ) : emailError ? (
+              <div className="flex items-center justify-center gap-2 mb-4 p-3 bg-yellow-500/20 rounded-lg border border-yellow-400/30">
+                <AlertCircle className="h-5 w-5 text-yellow-300" />
+                <span className="text-yellow-200 font-medium">Email pendiente</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2 mb-4 p-3 bg-blue-500/20 rounded-lg border border-blue-400/30">
+                <Mail className="h-5 w-5 text-blue-300 animate-pulse" />
+                <span className="text-blue-200 font-medium">Enviando confirmación...</span>
+              </div>
+            )}
             
             {/* Ilustraciones de camión */}
             <div className="flex items-center justify-center gap-4 mb-6">
@@ -155,7 +236,7 @@ const PaymentSuccess = () => {
           </CardHeader>
         </Card>
 
-        {/* Botones de acción principales - MOVIDOS AQUÍ */}
+        {/* Botones de acción principales */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Button
             onClick={handleViewOrders}
@@ -342,10 +423,15 @@ const PaymentSuccess = () => {
           <CardContent className="p-6 text-center">
             <div className="flex items-center justify-center gap-2 mb-3">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <span className="text-green-200 font-medium">Confirmación Enviada</span>
+              <span className="text-green-200 font-medium">
+                {emailSent ? 'Confirmación Enviada' : 'Procesando Confirmación'}
+              </span>
             </div>
             <p className="text-gray-300 text-sm">
-              Recibirás un email de confirmación con todos los detalles de tu pedido
+              {emailSent 
+                ? 'Has recibido un email de confirmación con todos los detalles de tu pedido'
+                : 'Recibirás un email de confirmación con todos los detalles de tu pedido'
+              }
             </p>
             <p className="text-gray-400 text-xs mt-2">
               🚚 Seguimiento disponible una vez enviado el pedido

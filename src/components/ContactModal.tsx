@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Phone, MapPin, Send } from "lucide-react";
 import { useState } from "react";
+import { supabase } from "@/lib/supabase";
 
 interface ContactModalProps {
   isOpen: boolean;
@@ -20,27 +21,47 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
     subject: "",
     message: "",
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     
-    // Simulate form submission
-    toast({
-      title: "Mensaje enviado",
-      description: "Te contactaremos pronto. ¡Gracias por escribirnos!",
-    });
-    
-    // Reset form
-    setFormData({
-      name: "",
-      email: "",
-      phone: "",
-      subject: "",
-      message: "",
-    });
-    
-    onClose();
+    try {
+      const { data, error } = await supabase.functions.invoke('send-contact-email', {
+        body: formData
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "¡Mensaje enviado exitosamente!",
+        description: "Hemos recibido tu mensaje. Te contactaremos pronto. ¡Gracias por escribirnos!",
+      });
+      
+      // Reset form
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        subject: "",
+        message: "",
+      });
+      
+      onClose();
+    } catch (error: any) {
+      console.error('Error sending email:', error);
+      toast({
+        title: "Error al enviar mensaje",
+        description: "Hubo un problema al enviar tu mensaje. Por favor, intenta nuevamente.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -71,7 +92,7 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
                   </div>
                   <div>
                     <p className="font-medium">Email</p>
-                    <p className="text-muted-foreground">info@stepup.com</p>
+                    <p className="text-muted-foreground">st3qup@gmail.com</p>
                   </div>
                 </div>
                 
@@ -91,7 +112,7 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
                   </div>
                   <div>
                     <p className="font-medium">Dirección</p>
-                    <p className="text-muted-foreground">Bogotá, Colombia</p>
+                    <p className="text-muted-foreground">Medellín, Antioquia, Colombia</p>
                   </div>
                 </div>
               </div>
@@ -117,6 +138,7 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
                 value={formData.name}
                 onChange={handleChange}
                 required
+                disabled={isSubmitting}
                 placeholder="Tu nombre completo"
               />
             </div>
@@ -130,6 +152,7 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
                 value={formData.email}
                 onChange={handleChange}
                 required
+                disabled={isSubmitting}
                 placeholder="tu@email.com"
               />
             </div>
@@ -141,6 +164,7 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
                 name="phone"
                 value={formData.phone}
                 onChange={handleChange}
+                disabled={isSubmitting}
                 placeholder="+57 300 123 4567"
               />
             </div>
@@ -153,6 +177,7 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
                 value={formData.subject}
                 onChange={handleChange}
                 required
+                disabled={isSubmitting}
                 placeholder="¿En qué podemos ayudarte?"
               />
             </div>
@@ -165,6 +190,7 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
                 value={formData.message}
                 onChange={handleChange}
                 required
+                disabled={isSubmitting}
                 placeholder="Escribe tu mensaje aquí..."
                 rows={4}
               />
@@ -172,10 +198,11 @@ const ContactModal = ({ isOpen, onClose }: ContactModalProps) => {
             
             <Button
               type="submit"
+              disabled={isSubmitting}
               className="w-full bg-gradient-stepup hover:shadow-red transition-all duration-300 hover:scale-105"
             >
               <Send className="h-4 w-4 mr-2" />
-              Enviar Mensaje
+              {isSubmitting ? "Enviando..." : "Enviar Mensaje"}
             </Button>
           </form>
         </div>

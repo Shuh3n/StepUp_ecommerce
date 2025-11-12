@@ -1,8 +1,16 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Facebook, Instagram, Twitter, Mail, Phone, MapPin } from 'lucide-react';
 
 const Footer = () => {
+  const navigate = useNavigate();
+
+  // Función para navegar y desplazar al inicio
+  const handleNavigation = (path: string) => {
+    navigate(path);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <footer className="bg-black text-white">
       {/* Main Footer */}
@@ -34,14 +42,20 @@ const Footer = () => {
             <h4 className="text-lg font-semibold">Enlaces Rápidos</h4>
             <ul className="space-y-2 text-sm">
               <li>
-                <Link to="/productos" className="text-gray-300 hover:text-white transition-colors">
+                <button 
+                  onClick={() => handleNavigation('/productos')}
+                  className="text-gray-300 hover:text-white transition-colors text-left"
+                >
                   Productos
-                </Link>
+                </button>
               </li>
               <li>
-                <Link to="/about" className="text-gray-300 hover:text-white transition-colors">
+                <button 
+                  onClick={() => handleNavigation('/about')}
+                  className="text-gray-300 hover:text-white transition-colors text-left"
+                >
                   Sobre Nosotros
-                </Link>
+                </button>
               </li>
             </ul>
           </div>
@@ -51,24 +65,36 @@ const Footer = () => {
             <h4 className="text-lg font-semibold">Legal</h4>
             <ul className="space-y-2 text-sm">
               <li>
-                <Link to="/privacy-policy" className="text-gray-300 hover:text-white transition-colors">
+                <button 
+                  onClick={() => handleNavigation('/privacy-policy')}
+                  className="text-gray-300 hover:text-white transition-colors text-left"
+                >
                   Política de Privacidad
-                </Link>
+                </button>
               </li>
               <li>
-                <Link to="/terms-of-service" className="text-gray-300 hover:text-white transition-colors">
+                <button 
+                  onClick={() => handleNavigation('/terms-of-service')}
+                  className="text-gray-300 hover:text-white transition-colors text-left"
+                >
                   Términos de Servicio
-                </Link>
+                </button>
               </li>
               <li>
-                <Link to="/return-policy" className="text-gray-300 hover:text-white transition-colors">
+                <button 
+                  onClick={() => handleNavigation('/return-policy')}
+                  className="text-gray-300 hover:text-white transition-colors text-left"
+                >
                   Política de Devoluciones
-                </Link>
+                </button>
               </li>
               <li>
-                <Link to="/shipping-policy" className="text-gray-300 hover:text-white transition-colors">
+                <button 
+                  onClick={() => handleNavigation('/shipping-policy')}
+                  className="text-gray-300 hover:text-white transition-colors text-left"
+                >
                   Política de Envíos
-                </Link>
+                </button>
               </li>
             </ul>
           </div>
@@ -87,7 +113,7 @@ const Footer = () => {
               </div>
               <div className="flex items-center space-x-2">
                 <MapPin size={16} className="text-gray-400" />
-                <span className="text-gray-300">Bogotá, Colombia</span>
+                <span className="text-gray-300">Medellín, Antioquia, Colombia</span>
               </div>
             </div>
           </div>
@@ -98,17 +124,26 @@ const Footer = () => {
       <div className="border-t border-gray-800">
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row justify-between items-center text-sm text-gray-400">
-            <p>&copy; 2024 StepUp Store. Todos los derechos reservados.</p>
+            <p>&copy; 2025 StepUp Store. Todos los derechos reservados.</p>
             <div className="flex space-x-4 mt-4 md:mt-0">
-              <Link to="/privacy-policy" className="hover:text-white transition-colors">
+              <button 
+                onClick={() => handleNavigation('/privacy-policy')}
+                className="hover:text-white transition-colors"
+              >
                 Privacidad
-              </Link>
-              <Link to="/terms-of-service" className="hover:text-white transition-colors">
+              </button>
+              <button 
+                onClick={() => handleNavigation('/terms-of-service')}
+                className="hover:text-white transition-colors"
+              >
                 Términos
-              </Link>
-              <Link to="/cookies-policy" className="hover:text-white transition-colors">
+              </button>
+              <button 
+                onClick={() => handleNavigation('/cookies-policy')}
+                className="hover:text-white transition-colors"
+              >
                 Cookies
-              </Link>
+              </button>
             </div>
           </div>
         </div>
