@@ -208,6 +208,9 @@ const Login = () => {
       });
       
       if (error) throw error;
+      
+      // No setear isLoading(false) aquí porque se redirigirá a auth-callback
+    
     } catch (error) {
       console.error('[LOGIN] ❌ Error iniciando sesión con Google:', error);
       setIsLoading(false);

@@ -17,7 +17,7 @@ import NotFound from "./pages/NotFound";
 import CompleteProfile from "./pages/CompleteProfile";
 import Profile from "./pages/Profile";
 import VerifyEmail from "./pages/VerifyEmail";
-import AuthCallback from "./pages/AuthCallback";
+import AuthCallback from '@/pages/AuthCallback';
 import Admin from "./pages/Admin";
 import AdminRoute from "./components/AdminRoute";
 import ForgotPassword from "./pages/ForgotPassword";
