@@ -32,6 +32,7 @@ const PaymentSuccess = () => {
   const [updateError, setUpdateError] = useState(null);
   const [emailSent, setEmailSent] = useState(false);
   const [emailError, setEmailError] = useState(null);
+  const [userData, setUserData] = useState(null);
 
   // Obtener parámetros de la URL
   const orderId = searchParams.get('order_id');
@@ -39,22 +40,74 @@ const PaymentSuccess = () => {
   const paypalPayerId = searchParams.get('PayerID');
   const paypalToken = searchParams.get('token');
 
+  // Función para obtener datos del usuario
+  const getUserData = async () => {
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('❌ Error al obtener usuario auth:', authError);
+        return null;
+      }
+
+      if (!user) {
+        console.error('❌ No hay usuario autenticado');
+        return null;
+      }
+
+      console.log('👤 Usuario autenticado:', user.email, user.user_metadata?.name);
+
+      // Obtener datos adicionales del perfil
+      const { data: profile, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (profileError) {
+        console.warn('⚠️ Error al obtener perfil:', profileError);
+        // No es crítico, usamos solo los datos de auth
+      }
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: profile?.name || user.user_metadata?.name || user.user_metadata?.full_name || 'Estimado cliente',
+        phone: profile?.phone || user.user_metadata?.phone || null
+      };
+    } catch (error) {
+      console.error('❌ Error al obtener datos del usuario:', error);
+      return null;
+    }
+  };
+
   const sendOrderConfirmationEmail = async (orderData) => {
     try {
       console.log('📧 Enviando email de confirmación para pedido:', orderData.id);
       console.log('📧 Datos completos del pedido:', orderData);
       
+      // Obtener datos del usuario actual si no los tenemos
+      let currentUserData = userData;
+      if (!currentUserData) {
+        currentUserData = await getUserData();
+        setUserData(currentUserData);
+      }
+
+      if (!currentUserData || !currentUserData.email) {
+        throw new Error('No se pudo obtener el email del usuario');
+      }
+
       // Preparar datos para el email con validaciones
       const emailData = {
         id: orderData.id || 'Sin ID',
-        user_email: orderData.user_email || orderData.email || 'email@ejemplo.com',
-        user_name: orderData.user_name || orderData.name || 'Estimado cliente',
+        user_email: currentUserData.email, // 🔥 Usar el email real del usuario
+        user_name: currentUserData.name || 'Estimado cliente', // 🔥 Usar el nombre real
         total: Number(orderData.total || 0),
         shipping: Number(orderData.shipping || 0),
         subtotal: Number(orderData.total || 0) - Number(orderData.shipping || 0),
         items: Array.isArray(orderData.items) ? orderData.items : [],
         address: orderData.address || orderData.delivery_address || 'Dirección no especificada',
-        phone: orderData.phone || orderData.contact_phone || '',
+        phone: currentUserData.phone || orderData.phone || orderData.contact_phone || '',
         payment_method: orderData.payment_method || 'PayPal',
         payment_status: orderData.payment_status || 'Pagado',
         status: orderData.status || 'Confirmado',
@@ -62,6 +115,7 @@ const PaymentSuccess = () => {
       };
 
       console.log('📧 Datos preparados para email:', emailData);
+      console.log('📧 Enviando a:', emailData.user_email);
 
       const { data, error } = await supabase.functions.invoke('send-order-confirmation', {
         body: emailData
@@ -76,7 +130,7 @@ const PaymentSuccess = () => {
       
       toast({
         title: "📧 Email enviado",
-        description: "Se ha enviado la confirmación del pedido a tu email.",
+        description: `Se ha enviado la confirmación del pedido a ${emailData.user_email}`,
         variant: "default"
       });
 
@@ -102,6 +156,10 @@ const PaymentSuccess = () => {
 
       try {
         console.log('🔄 Procesando pago exitoso para orden:', orderId);
+        
+        // Obtener datos del usuario primero
+        const currentUserData = await getUserData();
+        setUserData(currentUserData);
         
         const result = await updateOrderStatus(
           orderId,
@@ -167,7 +225,9 @@ const PaymentSuccess = () => {
             <p className="text-white">Procesando pago exitoso...</p>
             <div className="flex items-center justify-center gap-2 mt-4">
               <Mail className="h-4 w-4 text-green-400 animate-pulse" />
-              <span className="text-green-300 text-sm">Preparando confirmación...</span>
+              <span className="text-green-300 text-sm">
+                {userData ? `Preparando confirmación para ${userData.email}...` : 'Obteniendo datos del usuario...'}
+              </span>
             </div>
           </CardContent>
         </Card>
@@ -196,11 +256,13 @@ const PaymentSuccess = () => {
               Tu pedido ha sido confirmado y será procesado pronto
             </p>
 
-            {/* Estado del email */}
+            {/* Estado del email actualizado */}
             {emailSent ? (
               <div className="flex items-center justify-center gap-2 mb-4 p-3 bg-green-500/20 rounded-lg border border-green-400/30">
                 <Mail className="h-5 w-5 text-green-300" />
-                <span className="text-green-200 font-medium">Email de confirmación enviado</span>
+                <span className="text-green-200 font-medium">
+                  Email enviado a {userData?.email || 'tu correo'}
+                </span>
                 <CheckCircle2 className="h-4 w-4 text-green-400" />
               </div>
             ) : emailError ? (
@@ -211,7 +273,9 @@ const PaymentSuccess = () => {
             ) : (
               <div className="flex items-center justify-center gap-2 mb-4 p-3 bg-blue-500/20 rounded-lg border border-blue-400/30">
                 <Mail className="h-5 w-5 text-blue-300 animate-pulse" />
-                <span className="text-blue-200 font-medium">Enviando confirmación...</span>
+                <span className="text-blue-200 font-medium">
+                  Enviando confirmación{userData?.email ? ` a ${userData.email}` : ''}...
+                </span>
               </div>
             )}
             
